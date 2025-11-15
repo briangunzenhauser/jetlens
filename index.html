@@ -521,22 +521,23 @@
         // Get device pitch (tilt) - handles different orientations
         function getDevicePitch() {
             const beta = deviceOrientation.beta;
-            const gamma = deviceOrientation.gamma;
             
-            // When phone is in portrait mode and tilted up:
-            // beta decreases from 90 (horizontal) toward 0 (pointing up)
-            // We want 0° = horizon, 90° = straight up
+            // Actual device behavior (based on testing):
+            // beta = 90° means pointing at horizon (0° elevation)
+            // beta = 180° means pointing straight up (90° elevation)
+            // beta = 0° means pointing straight down (-90° elevation)
             
-            // Convert beta to elevation angle
-            // beta = 90 means phone horizontal (0° elevation)
-            // beta = 0 means phone pointing up (90° elevation)
-            // beta = 180 means phone pointing down (-90° elevation)
+            // Calculate pitch (elevation angle where phone is pointed)
+            // We want: 0° = horizon, 90° = straight up, -90° = straight down
             
             let pitch;
-            if (beta <= 90) {
-                pitch = 90 - beta; // 0 to 90 degrees up
+            
+            if (beta >= 0 && beta <= 180) {
+                // Linear mapping: beta 90→0°, beta 180→90°, beta 0→-90°
+                pitch = beta - 90;
             } else {
-                pitch = 90 - beta; // negative degrees (pointing down)
+                // Handle wrap-around for negative beta values (some devices)
+                pitch = beta - 90;
             }
             
             return pitch;
