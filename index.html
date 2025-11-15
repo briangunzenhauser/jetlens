@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AR Plane Spotter</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            overflow: hidden;
+            background: #000;
+            color: #fff;
+        }
+
+        #video {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
+        }
+
+        #overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+        }
+
+        .plane-marker {
+            position: absolute;
+            pointer-events: auto;
+            cursor: pointer;
+            transition: transform 0.1s;
+            transform: translate(-50%, -50%);
+        }
+
+        .plane-marker-inner {
+            background: rgba(0, 122, 255, 0.95);
+            color: white;
+            padding: 8px 14px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            box-shadow: 0 4px 15px rgba(0, 122, 255, 0.4);
+            white-space: nowrap;
+            border: 2px solid rgba(255, 255, 255, 0.4);
+        }
+
+        .plane-marker:active {
+            transform: translate(-50%, -50%) scale(0.95);
+        }
+
+        #info-panel {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(to top, rgba(0, 0, 0, 0.98), rgba(0, 0, 0, 0.95));
+            padding: 24px;
+            transform: translateY(100%);
+            transition: transform 0.3s ease;
+            max-height: 70vh;
+            overflow-y: auto;
+            border-top-left-radius: 20px;
+            border-top-right-radius: 20px;
+            backdrop-filter: blur(20px);
+        }
+
+        #info-panel.active {
+            transform: translateY(0);
+        }
+
+        #info-panel h2 {
+            font-size: 26px;
+            margin-bottom: 8px;
+            color: #007AFF;
+        }
+
+        #info-panel .airline {
+            font-size: 18px;
+            color: rgba(255, 255, 255, 0.7);
+            margin-bottom: 20px;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 14px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .info-row:last-child {
+            border-bottom: none;
+        }
+
+        .info-label {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+        }
+
+        .info-value {
+            font-weight: 600;
+            font-size: 16px;
+            text-align: right;
+            color: #fff;
+        }
+
+        #close-btn {
+            position: absolute;
+            top: 24px;
+            right: 24px;
+            background: rgba(255, 255, 255, 0.15);
+            border: none;
+            color: white;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            font-size: 22px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+
+        #close-btn:active {
+            background: rgba(255, 255, 255, 0.25);
+        }
+
+        #status {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 12px 16px;
+            border-radius: 12px;
+            font-size: 12px;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+        }
+
+        #loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: #000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        #loading.hidden {
+            display: none;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid rgba(255, 255, 255, 0.2);
+            border-top-color: #007AFF;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        #loading-text {
+            font-size: 16px;
+            color: rgba(255, 255, 255, 0.8);
+            text-align: center;
+            padding: 0 40px;
+        }
+
+        .crosshair {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 40px;
+            height: 40px;
+            pointer-events: none;
+        }
+
+        .crosshair::before,
+        .crosshair::after {
+            content: '';
+            position: absolute;
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        .crosshair::before {
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 2px;
+            transform: translateY(-50%);
+        }
+
+        .crosshair::after {
+            left: 50%;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            transform: translateX(-50%);
+        }
+    </style>
+</head>
+<body>
+    <div id="loading">
+        <div class="spinner"></div>
+        <div id="loading-text">Initializing camera and sensors...</div>
+    </div>
+
+    <video id="video" autoplay playsinline></video>
+    <div id="overlay"></div>
+    <div class="crosshair"></div>
+
+    <div id="status">
+        <div>📍 Getting location...</div>
+        <div id="plane-count">✈️ Searching for planes...</div>
+    </div>
+
+    <div id="info-panel">
+        <button id="close-btn">×</button>
+        <h2 id="flight-number">-</h2>
+        <div class="airline" id="airline-name">-</div>
+        <div class="info-row">
+            <span class="info-label">Origin</span>
+            <span class="info-value" id="origin">-</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">Destination</span>
+            <span class="info-value" id="destination">-</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">Altitude</span>
+            <span class="info-value" id="altitude">-</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">Speed</span>
+            <span class="info-value" id="speed">-</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">Aircraft</span>
+            <span class="info-value" id="aircraft-type">-</span>
+        </div>
+    </div>
+
+    <script>
+        // Global state
+        let userLocation = null;
+        let deviceOrientation = { alpha: 0, beta: 0, gamma: 0 };
+        let planes = [];
+        let markers = {};
+        let selectedPlane = null;
+
+        // DOM elements
+        const video = document.getElementById('video');
+        const overlay = document.getElementById('overlay');
+        const loading = document.getElementById('loading');
+        const loadingText = document.getElementById('loading-text');
+        const infoPanel = document.getElementById('info-panel');
+        const closeBtn = document.getElementById('close-btn');
+        const planeCountEl = document.getElementById('plane-count');
+
+        // Initialize the app
+        async function init() {
+            try {
+                // Request camera access
+                loadingText.textContent = 'Requesting camera access...';
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: 'environment',
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 }
+                    }
+                });
+                video.srcObject = stream;
+
+                // Get user location
+                loadingText.textContent = 'Getting your location...';
+                userLocation = await getUserLocation();
+                updateStatus();
+
+                // Request device orientation permission (iOS 13+)
+                if (typeof DeviceOrientationEvent !== 'undefined' && 
+                    typeof DeviceOrientationEvent.requestPermission === 'function') {
+                    loadingText.textContent = 'Requesting motion sensors...';
+                    const permission = await DeviceOrientationEvent.requestPermission();
+                    if (permission !== 'granted') {
+                        throw new Error('Motion sensor permission denied');
+                    }
+                }
+
+                // Start orientation tracking
+                window.addEventListener('deviceorientation', handleOrientation);
+
+                // Hide loading screen
+                loading.classList.add('hidden');
+
+                // Start fetching plane data
+                fetchPlanes();
+                setInterval(fetchPlanes, 10000); // Update every 10 seconds
+                setInterval(updateMarkers, 100); // Update marker positions frequently
+
+            } catch (error) {
+                loadingText.textContent = `Error: ${error.message}`;
+                console.error('Initialization error:', error);
+            }
+        }
+
+        // Get user's GPS location
+        function getUserLocation() {
+            return new Promise((resolve, reject) => {
+                if (!navigator.geolocation) {
+                    reject(new Error('Geolocation not supported'));
+                    return;
+                }
+
+                navigator.geolocation.getCurrentPosition(
+                    position => {
+                        resolve({
+                            lat: position.coords.latitude,
+                            lon: position.coords.longitude
+                        });
+                    },
+                    error => reject(error),
+                    { enableHighAccuracy: true, timeout: 10000 }
+                );
+            });
+        }
+
+        // Handle device orientation changes
+        function handleOrientation(event) {
+            deviceOrientation = {
+                alpha: event.alpha || 0,  // Compass direction (0-360)
+                beta: event.beta || 0,    // Front-to-back tilt (-180 to 180)
+                gamma: event.gamma || 0   // Left-to-right tilt (-90 to 90)
+            };
+        }
+
+        // Fetch plane data from OpenSky Network API
+        async function fetchPlanes() {
+            if (!userLocation) return;
+
+            try {
+                // Get planes within ~200km radius
+                const lat = userLocation.lat;
+                const lon = userLocation.lon;
+                const lamin = lat - 2;
+                const lamax = lat + 2;
+                const lomin = lon - 2;
+                const lomax = lon + 2;
+
+                const url = `https://opensky-network.org/api/states/all?lamin=${lamin}&lomin=${lomin}&lamax=${lamax}&lomax=${lomax}`;
+                
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (data.states) {
+                    planes = data.states.map(state => ({
+                        icao24: state[0],
+                        callsign: state[1] ? state[1].trim() : 'N/A',
+                        origin_country: state[2],
+                        longitude: state[5],
+                        latitude: state[6],
+                        baro_altitude: state[7],
+                        velocity: state[9],
+                        true_track: state[10],
+                        vertical_rate: state[11],
+                        on_ground: state[8]
+                    })).filter(plane => 
+                        plane.latitude && 
+                        plane.longitude && 
+                        !plane.on_ground &&
+                        plane.baro_altitude > 1000
+                    );
+
+                    planeCountEl.textContent = `✈️ Tracking ${planes.length} planes`;
+                }
+            } catch (error) {
+                console.error('Error fetching planes:', error);
+                planeCountEl.textContent = '✈️ Error loading planes';
+            }
+        }
+
+        // Calculate bearing between two points
+        function calculateBearing(lat1, lon1, lat2, lon2) {
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const lat1Rad = lat1 * Math.PI / 180;
+            const lat2Rad = lat2 * Math.PI / 180;
+
+            const y = Math.sin(dLon) * Math.cos(lat2Rad);
+            const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) -
+                     Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLon);
+
+            let bearing = Math.atan2(y, x) * 180 / Math.PI;
+            bearing = (bearing + 360) % 360;
+
+            return bearing;
+        }
+
+        // Calculate distance between two points (Haversine formula)
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371; // Earth's radius in km
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                     Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                     Math.sin(dLon / 2) * Math.sin(dLon / 2);
+
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c;
+        }
+
+        // Calculate elevation angle to plane
+        function calculateElevation(distance, altitude) {
+            // altitude is in meters, distance in km
+            const distanceM = distance * 1000;
+            return Math.atan2(altitude, distanceM) * 180 / Math.PI;
+        }
+
+        // Check if plane is in field of view
+        function isInFieldOfView(planeBearing, planeElevation) {
+            const compassHeading = deviceOrientation.alpha;
+            const pitch = deviceOrientation.beta;
+            
+            // Calculate horizontal field of view (assume ~60 degrees)
+            const hFOV = 60;
+            let bearingDiff = Math.abs(planeBearing - compassHeading);
+            if (bearingDiff > 180) bearingDiff = 360 - bearingDiff;
+
+            // Calculate vertical field of view based on device tilt
+            // When beta is 90, looking straight ahead (horizon)
+            // When beta is 180, looking up
+            const deviceElevation = 90 - pitch;
+            const vFOV = 45;
+            const elevationDiff = Math.abs(planeElevation - deviceElevation);
+
+            return bearingDiff < hFOV / 2 && elevationDiff < vFOV / 2;
+        }
+
+        // Convert plane position to screen coordinates
+        function planeToScreenPosition(planeBearing, planeElevation) {
+            const compassHeading = deviceOrientation.alpha;
+            const pitch = deviceOrientation.beta;
+
+            // Horizontal position
+            let bearingDiff = planeBearing - compassHeading;
+            if (bearingDiff > 180) bearingDiff -= 360;
+            if (bearingDiff < -180) bearingDiff += 360;
+
+            const hFOV = 60;
+            const x = (bearingDiff / hFOV + 0.5) * window.innerWidth;
+
+            // Vertical position
+            const deviceElevation = 90 - pitch;
+            const elevationDiff = planeElevation - deviceElevation;
+            const vFOV = 45;
+            const y = (0.5 - elevationDiff / vFOV) * window.innerHeight;
+
+            return { x, y };
+        }
+
+        // Update plane markers on screen
+        function updateMarkers() {
+            if (!userLocation || planes.length === 0) return;
+
+            // Track which markers are still visible
+            const visibleMarkers = new Set();
+
+            planes.forEach(plane => {
+                const bearing = calculateBearing(
+                    userLocation.lat, userLocation.lon,
+                    plane.latitude, plane.longitude
+                );
+
+                const distance = calculateDistance(
+                    userLocation.lat, userLocation.lon,
+                    plane.latitude, plane.longitude
+                );
+
+                const elevation = calculateElevation(distance, plane.baro_altitude || 0);
+
+                if (isInFieldOfView(bearing, elevation) && distance < 50) {
+                    const position = planeToScreenPosition(bearing, elevation);
+                    
+                    // Create or update marker
+                    if (!markers[plane.icao24]) {
+                        const marker = createMarker(plane);
+                        markers[plane.icao24] = marker;
+                        overlay.appendChild(marker);
+                    }
+
+                    const marker = markers[plane.icao24];
+                    marker.style.left = `${position.x}px`;
+                    marker.style.top = `${position.y}px`;
+                    marker.style.display = 'block';
+                    visibleMarkers.add(plane.icao24);
+                }
+            });
+
+            // Hide markers that are out of view
+            Object.keys(markers).forEach(icao => {
+                if (!visibleMarkers.has(icao)) {
+                    markers[icao].style.display = 'none';
+                }
+            });
+        }
+
+        // Create a plane marker element
+        function createMarker(plane) {
+            const marker = document.createElement('div');
+            marker.className = 'plane-marker';
+            
+            const inner = document.createElement('div');
+            inner.className = 'plane-marker-inner';
+            inner.textContent = plane.callsign || 'Unknown';
+            
+            marker.appendChild(inner);
+            
+            marker.addEventListener('click', () => showPlaneInfo(plane));
+            
+            return marker;
+        }
+
+        // Get route information from various APIs
+        async function getRouteInfo(callsign, icao24) {
+            if (!callsign || callsign === 'N/A') {
+                return null;
+            }
+
+            // Try hexdb.io first
+            try {
+                const hexdbUrl = `https://hexdb.io/api/v1/aircraft/${icao24}`;
+                const response = await fetch(hexdbUrl);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data && data.aircraft) {
+                        return {
+                            registration: data.aircraft.registration,
+                            type: data.aircraft.type,
+                            source: 'hexdb'
+                        };
+                    }
+                }
+            } catch (error) {
+                console.log('hexdb.io lookup failed:', error);
+            }
+
+            // Try adsbdb.com as fallback
+            try {
+                const adsbdbUrl = `https://api.adsbdb.com/v0/callsign/${callsign.trim()}`;
+                const response = await fetch(adsbdbUrl);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data && data.response && data.response.flightroute) {
+                        const route = data.response.flightroute;
+                        return {
+                            airline: route.airline?.name,
+                            origin: route.origin?.name || route.origin?.iata_code,
+                            originCity: route.origin?.municipality,
+                            destination: route.destination?.name || route.destination?.iata_code,
+                            destinationCity: route.destination?.municipality,
+                            flightNumber: route.callsign_iata || callsign,
+                            source: 'adsbdb'
+                        };
+                    }
+                }
+            } catch (error) {
+                console.log('adsbdb.com lookup failed:', error);
+            }
+
+            // Try OpenSky's own route API
+            try {
+                const openskyUrl = `https://opensky-network.org/api/routes?callsign=${callsign.trim()}`;
+                const response = await fetch(openskyUrl);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data && data.route && data.route.length >= 2) {
+                        return {
+                            origin: data.route[0],
+                            destination: data.route[data.route.length - 1],
+                            source: 'opensky'
+                        };
+                    }
+                }
+            } catch (error) {
+                console.log('OpenSky route lookup failed:', error);
+            }
+
+            return null;
+        }
+
+        // Format airport name for display
+        function formatAirport(airportData, city) {
+            if (!airportData) return 'Unknown';
+            
+            if (typeof airportData === 'string') {
+                return airportData;
+            }
+            
+            if (city) {
+                return `${airportData} (${city})`;
+            }
+            
+            return airportData;
+        }
+
+        // Show detailed plane information
+        async function showPlaneInfo(plane) {
+            selectedPlane = plane;
+
+            // Show panel immediately with basic info
+            document.getElementById('flight-number').textContent = plane.callsign || 'Unknown Flight';
+            document.getElementById('airline-name').textContent = plane.origin_country || 'Unknown';
+            
+            const altitudeFt = plane.baro_altitude ? Math.round(plane.baro_altitude * 3.28084) : 0;
+            document.getElementById('altitude').textContent = `${altitudeFt.toLocaleString()} ft`;
+            
+            const speedKnots = plane.velocity ? Math.round(plane.velocity * 1.94384) : 0;
+            document.getElementById('speed').textContent = `${speedKnots} knots`;
+            
+            document.getElementById('origin').textContent = 'Loading...';
+            document.getElementById('destination').textContent = 'Loading...';
+            document.getElementById('aircraft-type').textContent = plane.icao24.toUpperCase();
+            
+            infoPanel.classList.add('active');
+
+            // Fetch route information in the background
+            const routeInfo = await getRouteInfo(plane.callsign, plane.icao24);
+            
+            if (routeInfo) {
+                // Update with route information
+                if (routeInfo.airline) {
+                    document.getElementById('airline-name').textContent = routeInfo.airline;
+                }
+                
+                if (routeInfo.flightNumber) {
+                    document.getElementById('flight-number').textContent = routeInfo.flightNumber;
+                }
+                
+                if (routeInfo.origin) {
+                    document.getElementById('origin').textContent = 
+                        formatAirport(routeInfo.origin, routeInfo.originCity);
+                } else {
+                    document.getElementById('origin').textContent = 'Unknown';
+                }
+                
+                if (routeInfo.destination) {
+                    document.getElementById('destination').textContent = 
+                        formatAirport(routeInfo.destination, routeInfo.destinationCity);
+                } else {
+                    document.getElementById('destination').textContent = 'Unknown';
+                }
+                
+                if (routeInfo.type) {
+                    document.getElementById('aircraft-type').textContent = routeInfo.type;
+                }
+            } else {
+                // No route data found
+                document.getElementById('origin').textContent = 'Data not available';
+                document.getElementById('destination').textContent = 'Data not available';
+            }
+        }
+
+        // Close info panel
+        closeBtn.addEventListener('click', () => {
+            infoPanel.classList.remove('active');
+            selectedPlane = null;
+        });
+
+        // Update status display
+        function updateStatus() {
+            if (userLocation) {
+                document.querySelector('#status div:first-child').textContent = 
+                    `📍 ${userLocation.lat.toFixed(4)}, ${userLocation.lon.toFixed(4)}`;
+            }
+        }
+
+        // Start the app when page loads
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>
