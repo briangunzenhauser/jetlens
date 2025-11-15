@@ -485,43 +485,66 @@
             return Math.atan2(altitude, distanceM) * 180 / Math.PI;
         }
 
+        // Get device pitch (tilt) - handles different orientations
+        function getDevicePitch() {
+            const beta = deviceOrientation.beta;
+            const gamma = deviceOrientation.gamma;
+            
+            // When phone is in portrait mode and tilted up:
+            // beta decreases from 90 (horizontal) toward 0 (pointing up)
+            // We want 0° = horizon, 90° = straight up
+            
+            // Convert beta to elevation angle
+            // beta = 90 means phone horizontal (0° elevation)
+            // beta = 0 means phone pointing up (90° elevation)
+            // beta = 180 means phone pointing down (-90° elevation)
+            
+            let pitch;
+            if (beta <= 90) {
+                pitch = 90 - beta; // 0 to 90 degrees up
+            } else {
+                pitch = 90 - beta; // negative degrees (pointing down)
+            }
+            
+            return pitch;
+        }
+
         // Check if plane is in field of view
         function isInFieldOfView(planeBearing, planeElevation) {
             const compassHeading = deviceOrientation.alpha;
-            const pitch = deviceOrientation.beta;
+            const devicePitch = getDevicePitch();
             
-            // Calculate horizontal field of view (assume ~60 degrees)
-            const hFOV = 60;
+            // Horizontal field of view (assume ~70 degrees for phone camera)
+            const hFOV = 70;
             let bearingDiff = Math.abs(planeBearing - compassHeading);
             if (bearingDiff > 180) bearingDiff = 360 - bearingDiff;
 
-            // Calculate vertical field of view based on device tilt
-            // When beta is 90, looking straight ahead (horizon)
-            // When beta is 180, looking up
-            const deviceElevation = 90 - pitch;
-            const vFOV = 45;
-            const elevationDiff = Math.abs(planeElevation - deviceElevation);
+            // Vertical field of view
+            const vFOV = 50;
+            const elevationDiff = Math.abs(planeElevation - devicePitch);
 
-            return bearingDiff < hFOV / 2 && elevationDiff < vFOV / 2;
+            const inHorizontalFOV = bearingDiff < hFOV / 2;
+            const inVerticalFOV = elevationDiff < vFOV / 2;
+
+            return inHorizontalFOV && inVerticalFOV;
         }
 
         // Convert plane position to screen coordinates
         function planeToScreenPosition(planeBearing, planeElevation) {
             const compassHeading = deviceOrientation.alpha;
-            const pitch = deviceOrientation.beta;
+            const devicePitch = getDevicePitch();
 
             // Horizontal position
             let bearingDiff = planeBearing - compassHeading;
             if (bearingDiff > 180) bearingDiff -= 360;
             if (bearingDiff < -180) bearingDiff += 360;
 
-            const hFOV = 60;
+            const hFOV = 70;
             const x = (bearingDiff / hFOV + 0.5) * window.innerWidth;
 
             // Vertical position
-            const deviceElevation = 90 - pitch;
-            const elevationDiff = planeElevation - deviceElevation;
-            const vFOV = 45;
+            const elevationDiff = planeElevation - devicePitch;
+            const vFOV = 50;
             const y = (0.5 - elevationDiff / vFOV) * window.innerHeight;
 
             return { x, y };
@@ -547,21 +570,36 @@
 
                 const elevation = calculateElevation(distance, plane.baro_altitude || 0);
 
-                if (isInFieldOfView(bearing, elevation) && distance < 50) {
+                // Filter criteria:
+                // 1. Distance: within 20km (planes beyond this are hard to see)
+                // 2. Elevation: above 5° (filter out planes below horizon/too low)
+                // 3. Must be in field of view
+                const MAX_DISTANCE = 20; // km
+                const MIN_ELEVATION = 5; // degrees above horizon
+                
+                if (distance < MAX_DISTANCE && 
+                    elevation > MIN_ELEVATION && 
+                    isInFieldOfView(bearing, elevation)) {
+                    
                     const position = planeToScreenPosition(bearing, elevation);
                     
-                    // Create or update marker
-                    if (!markers[plane.icao24]) {
-                        const marker = createMarker(plane);
-                        markers[plane.icao24] = marker;
-                        overlay.appendChild(marker);
-                    }
+                    // Only show if position is actually on screen
+                    if (position.x >= 0 && position.x <= window.innerWidth &&
+                        position.y >= 0 && position.y <= window.innerHeight) {
+                        
+                        // Create or update marker
+                        if (!markers[plane.icao24]) {
+                            const marker = createMarker(plane);
+                            markers[plane.icao24] = marker;
+                            overlay.appendChild(marker);
+                        }
 
-                    const marker = markers[plane.icao24];
-                    marker.style.left = `${position.x}px`;
-                    marker.style.top = `${position.y}px`;
-                    marker.style.display = 'block';
-                    visibleMarkers.add(plane.icao24);
+                        const marker = markers[plane.icao24];
+                        marker.style.left = `${position.x}px`;
+                        marker.style.top = `${position.y}px`;
+                        marker.style.display = 'block';
+                        visibleMarkers.add(plane.icao24);
+                    }
                 }
             });
 
