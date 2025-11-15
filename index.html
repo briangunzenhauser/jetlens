@@ -189,6 +189,27 @@
             padding: 0 40px;
         }
 
+        #start-btn {
+            margin-top: 30px;
+            padding: 16px 32px;
+            background: #007AFF;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        #start-btn:hover {
+            background: #0051D5;
+        }
+
+        #start-btn:active {
+            transform: scale(0.98);
+        }
+
         .crosshair {
             position: fixed;
             top: 50%;
@@ -227,6 +248,7 @@
     <div id="loading">
         <div class="spinner"></div>
         <div id="loading-text">Initializing camera and sensors...</div>
+        <button id="start-btn" style="display: none;">Start AR Plane Spotter</button>
     </div>
 
     <video id="video" autoplay playsinline></video>
@@ -277,13 +299,46 @@
         const overlay = document.getElementById('overlay');
         const loading = document.getElementById('loading');
         const loadingText = document.getElementById('loading-text');
+        const startBtn = document.getElementById('start-btn');
         const infoPanel = document.getElementById('info-panel');
         const closeBtn = document.getElementById('close-btn');
         const planeCountEl = document.getElementById('plane-count');
 
+        // Show start button on page load
+        window.addEventListener('load', () => {
+            loadingText.textContent = 'Ready to start plane spotting!';
+            document.querySelector('.spinner').style.display = 'none';
+            startBtn.style.display = 'block';
+        });
+
+        // Initialize the app when user clicks start button
+        startBtn.addEventListener('click', init);
+
         // Initialize the app
         async function init() {
             try {
+                // Hide start button, show spinner
+                startBtn.style.display = 'none';
+                document.querySelector('.spinner').style.display = 'block';
+
+                // Request device orientation permission FIRST (iOS 13+)
+                // This MUST happen in response to a user gesture
+                if (typeof DeviceOrientationEvent !== 'undefined' && 
+                    typeof DeviceOrientationEvent.requestPermission === 'function') {
+                    loadingText.textContent = 'Requesting motion sensors...';
+                    try {
+                        const permission = await DeviceOrientationEvent.requestPermission();
+                        if (permission !== 'granted') {
+                            throw new Error('Motion sensor permission denied. Please allow access to device orientation.');
+                        }
+                    } catch (error) {
+                        throw new Error('Motion sensor permission required. ' + error.message);
+                    }
+                }
+
+                // Start orientation tracking
+                window.addEventListener('deviceorientation', handleOrientation);
+
                 // Request camera access
                 loadingText.textContent = 'Requesting camera access...';
                 const stream = await navigator.mediaDevices.getUserMedia({
@@ -300,19 +355,6 @@
                 userLocation = await getUserLocation();
                 updateStatus();
 
-                // Request device orientation permission (iOS 13+)
-                if (typeof DeviceOrientationEvent !== 'undefined' && 
-                    typeof DeviceOrientationEvent.requestPermission === 'function') {
-                    loadingText.textContent = 'Requesting motion sensors...';
-                    const permission = await DeviceOrientationEvent.requestPermission();
-                    if (permission !== 'granted') {
-                        throw new Error('Motion sensor permission denied');
-                    }
-                }
-
-                // Start orientation tracking
-                window.addEventListener('deviceorientation', handleOrientation);
-
                 // Hide loading screen
                 loading.classList.add('hidden');
 
@@ -324,6 +366,10 @@
             } catch (error) {
                 loadingText.textContent = `Error: ${error.message}`;
                 console.error('Initialization error:', error);
+                // Show start button again to let user retry
+                document.querySelector('.spinner').style.display = 'none';
+                startBtn.textContent = 'Try Again';
+                startBtn.style.display = 'block';
             }
         }
 
@@ -699,9 +745,6 @@
                     `📍 ${userLocation.lat.toFixed(4)}, ${userLocation.lon.toFixed(4)}`;
             }
         }
-
-        // Start the app when page loads
-        window.addEventListener('load', init);
     </script>
 </body>
 </html>
