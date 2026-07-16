@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AR Plane Spotter</title>
+    <title>JetLens</title>
     <style>
         * {
             margin: 0;
@@ -83,7 +83,7 @@
         #info-panel h2 {
             font-size: 26px;
             margin-bottom: 8px;
-            color: #007AFF;
+            color: var(--sky-500);
         }
 
         #info-panel .airline {
@@ -164,6 +164,15 @@
             max-width: 300px;
         }
 
+        :root {
+            /* Brilliant daytime-sky blues. Deliberately warmer and more cyan than
+               the iOS system blue so the app reads as sky rather than as chrome. */
+            --sky-700: #0468B8;
+            --sky-600: #0A78C7;
+            --sky-500: #0D95F2;
+            --sky-200: #A9D9F9;
+        }
+
         #loading {
             position: fixed;
             top: 0;
@@ -186,7 +195,7 @@
             width: 50px;
             height: 50px;
             border: 3px solid rgba(255, 255, 255, 0.2);
-            border-top-color: #007AFF;
+            border-top-color: var(--sky-500);
             border-radius: 50%;
             animation: spin 1s linear infinite;
             margin-bottom: 20px;
@@ -205,23 +214,83 @@
 
         #start-btn {
             margin-top: 30px;
-            padding: 16px 32px;
-            background: #007AFF;
+            padding: 16px 36px;
+            background: var(--sky-500);
             color: white;
             border: none;
             border-radius: 12px;
             font-size: 18px;
             font-weight: 600;
+            letter-spacing: 0.2px;
             cursor: pointer;
-            transition: background 0.2s;
+            transition: background 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 20px rgba(13, 149, 242, 0.35);
         }
 
         #start-btn:hover {
-            background: #0051D5;
+            background: var(--sky-600);
+            box-shadow: 0 4px 24px rgba(13, 149, 242, 0.5);
         }
 
         #start-btn:active {
             transform: scale(0.98);
+        }
+
+        #permission-note {
+            margin-top: 18px;
+            max-width: 300px;
+            padding: 0 24px;
+            text-align: center;
+            font-size: 13px;
+            line-height: 1.5;
+            color: rgba(255, 255, 255, 0.55);
+        }
+
+        /* Shown once permissions are granted, then fades itself out. Never
+           interactive -- it must not swallow a tap on a plane marker. */
+        #intro {
+            position: fixed;
+            inset: 0;
+            z-index: 900;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 32px;
+            text-align: center;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 600ms ease;
+            background: linear-gradient(
+                180deg,
+                var(--sky-700) 0%,
+                var(--sky-500) 38%,
+                var(--sky-200) 76%,
+                #FFFFFF 100%
+            );
+        }
+
+        #intro.visible {
+            opacity: 1;
+        }
+
+        /* Longer, softer fade on the way out so it dissolves into the camera feed. */
+        #intro.leaving {
+            opacity: 0;
+            transition: opacity 800ms ease;
+        }
+
+        #intro-text {
+            font-size: 26px;
+            font-weight: 600;
+            line-height: 1.35;
+            color: #FFFFFF;
+            max-width: 460px;
+            text-shadow: 0 2px 18px rgba(6, 84, 148, 0.45);
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            #intro { transition-duration: 1ms; }
+            #intro.leaving { transition-duration: 1ms; }
         }
 
         .crosshair {
@@ -262,7 +331,14 @@
     <div id="loading">
         <div class="spinner"></div>
         <div id="loading-text">Initializing camera and sensors...</div>
-        <button id="start-btn" style="display: none;">Start AR Plane Spotter</button>
+        <button id="start-btn" style="display: none;">Start JetLens</button>
+        <p id="permission-note" style="display: none;">
+            JetLens needs access to your camera and location to work properly.
+        </p>
+    </div>
+
+    <div id="intro" aria-hidden="true">
+        <div id="intro-text">Point your phone towards a plane to start tracking</div>
     </div>
 
     <video id="video" autoplay playsinline></video>
@@ -309,9 +385,21 @@
     </div>
 
     <script>
+        // Cloudflare Worker that proxies OpenSky (see worker/README.md). OpenSky's
+        // API sends no CORS headers usable from this origin, so requests for plane
+        // data must go through the proxy.
+        //
+        // Two valid forms:
+        //   'https://jetlens-opensky-proxy.<subdomain>.workers.dev'  cross-origin;
+        //       the origin must be listed in the Worker's ALLOWED_ORIGINS.
+        //   '/api'  same-origin, once the page and Worker share a domain. Preferred:
+        //       the browser runs no CORS check at all.
+        const PROXY_URL = 'https://jetlens-opensky-proxy.boxandpixel.workers.dev';
+
         // Global state
         let userLocation = null;
         let deviceOrientation = { alpha: 0, beta: 0, gamma: 0 };
+        let compassHeading = null;  // true-north heading in degrees, or null if unknown
         let planes = [];
         let markers = {};
         let selectedPlane = null;
@@ -325,13 +413,56 @@
         const infoPanel = document.getElementById('info-panel');
         const closeBtn = document.getElementById('close-btn');
         const planeCountEl = document.getElementById('plane-count');
+        const permissionNote = document.getElementById('permission-note');
+        const intro = document.getElementById('intro');
+        const introText = document.getElementById('intro-text');
+
+        // Must match the #intro opacity transitions in CSS.
+        const INTRO_FADE_IN_MS = 600;
+        const INTRO_FADE_OUT_MS = 800;
+
+        // Branding QA affordance. The intro card normally appears only after camera
+        // and motion permissions are granted, which the iOS Simulator has no hardware
+        // to provide -- so there is otherwise no way to look at it there.
+        //   ?preview=intro   pin the intro card, no auto-dismiss
+        //   ?preview=start   the first screen (identical to normal load)
+        const previewMode = new URLSearchParams(location.search).get('preview');
 
         // Show start button on page load
         window.addEventListener('load', () => {
-            loadingText.textContent = 'Ready to start plane spotting!';
+            if (previewMode === 'intro') {
+                loading.classList.add('hidden');
+                intro.style.display = 'flex';
+                intro.classList.add('visible');
+                return;
+            }
+
+            // The idle screen is just the button and its permission note; the text
+            // line is reused for progress and errors once init starts.
+            loadingText.style.display = 'none';
             document.querySelector('.spinner').style.display = 'none';
             startBtn.style.display = 'block';
+            permissionNote.style.display = 'block';
         });
+
+        // The intro card is a read-once message, so hold it long enough to actually
+        // read: ~200 words/min over its length, plus a beat to notice it and focus.
+        function showIntro() {
+            const words = introText.textContent.trim().split(/\s+/).length;
+            const readMs = (words / 200) * 60 * 1000;
+            const holdMs = Math.round(1000 + readMs);
+
+            intro.classList.add('visible');
+
+            setTimeout(() => {
+                intro.classList.add('leaving');
+                // Drop it from the layer stack once the fade has finished. Timed
+                // rather than driven by transitionend, which never fires if the
+                // transition gets interrupted or the tab is throttled mid-fade --
+                // that would strand the element on top of the camera feed.
+                setTimeout(() => { intro.style.display = 'none'; }, INTRO_FADE_OUT_MS);
+            }, INTRO_FADE_IN_MS + holdMs);
+        }
 
         // Initialize the app when user clicks start button
         startBtn.addEventListener('click', init);
@@ -339,8 +470,10 @@
         // Initialize the app
         async function init() {
             try {
-                // Hide start button, show spinner
+                // Hide start button, show spinner and the progress/error line
                 startBtn.style.display = 'none';
+                permissionNote.style.display = 'none';
+                loadingText.style.display = 'block';
                 document.querySelector('.spinner').style.display = 'block';
 
                 // Request device orientation permission FIRST (iOS 13+)
@@ -358,8 +491,16 @@
                     }
                 }
 
-                // Start orientation tracking
-                window.addEventListener('deviceorientation', handleOrientation);
+                // Start orientation tracking. Prefer the absolute event where it
+                // exists (most Android browsers) since plain 'deviceorientation'
+                // there is relative to an arbitrary starting yaw and useless for
+                // bearings. iOS fires only 'deviceorientation', but attaches
+                // webkitCompassHeading to it.
+                if ('ondeviceorientationabsolute' in window) {
+                    window.addEventListener('deviceorientationabsolute', handleOrientation);
+                } else {
+                    window.addEventListener('deviceorientation', handleOrientation);
+                }
 
                 // Request camera access
                 loadingText.textContent = 'Requesting camera access...';
@@ -377,8 +518,9 @@
                 userLocation = await getUserLocation();
                 updateStatus();
 
-                // Hide loading screen
+                // Hide loading screen and hand off to the intro card
                 loading.classList.add('hidden');
+                showIntro();
 
                 // Start fetching plane data
                 fetchPlanes();
@@ -392,6 +534,7 @@
                 document.querySelector('.spinner').style.display = 'none';
                 startBtn.textContent = 'Try Again';
                 startBtn.style.display = 'block';
+                permissionNote.style.display = 'block';
             }
         }
 
@@ -419,18 +562,34 @@
         // Handle device orientation changes
         function handleOrientation(event) {
             deviceOrientation = {
-                alpha: event.alpha || 0,  // Compass direction (0-360)
+                alpha: event.alpha || 0,  // NOT a compass heading -- see below
                 beta: event.beta || 0,    // Front-to-back tilt (-180 to 180)
                 gamma: event.gamma || 0   // Left-to-right tilt (-90 to 90)
             };
-            
+
+            // alpha is not a compass bearing. It rotates counter-clockwise, and on a
+            // non-absolute event its zero point is wherever the device happened to be
+            // when tracking started. Bearings run clockwise from true north, so using
+            // alpha directly points markers at the wrong part of the sky.
+            if (typeof event.webkitCompassHeading === 'number') {
+                // iOS: already clockwise from north.
+                compassHeading = event.webkitCompassHeading;
+            } else if (event.absolute === true) {
+                // Android absolute events: convert counter-clockwise to clockwise.
+                compassHeading = (360 - event.alpha) % 360;
+            } else {
+                compassHeading = null;
+            }
+
             // Update debug display
             updateDebugDisplay();
         }
 
         // Update debug display
         function updateDebugDisplay() {
-            document.getElementById('debug-alpha').textContent = deviceOrientation.alpha.toFixed(1);
+            document.getElementById('debug-alpha').textContent =
+                deviceOrientation.alpha.toFixed(1) +
+                (compassHeading === null ? ' (no compass)' : ` (hdg ${compassHeading.toFixed(0)}°)`);
             document.getElementById('debug-beta').textContent = deviceOrientation.beta.toFixed(1);
             document.getElementById('debug-gamma').textContent = deviceOrientation.gamma.toFixed(1);
             document.getElementById('debug-pitch').textContent = getDevicePitch().toFixed(1);
@@ -449,9 +608,12 @@
                 const lomin = lon - 2;
                 const lomax = lon + 2;
 
-                const url = `https://opensky-network.org/api/states/all?lamin=${lamin}&lomin=${lomin}&lamax=${lamax}&lomax=${lomax}`;
-                
+                const url = `${PROXY_URL}/?lamin=${lamin}&lomin=${lomin}&lamax=${lamax}&lomax=${lomax}`;
+
                 const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error(`proxy returned ${response.status}`);
+                }
                 const data = await response.json();
 
                 if (data.states) {
@@ -473,7 +635,9 @@
                         plane.baro_altitude > 1000
                     );
 
-                    planeCountEl.textContent = `✈️ Tracking ${planes.length} planes`;
+                    planeCountEl.textContent = compassHeading === null
+                        ? `✈️ ${planes.length} planes — no compass signal`
+                        : `✈️ Tracking ${planes.length} planes`;
                 }
             } catch (error) {
                 console.error('Error fetching planes:', error);
@@ -545,9 +709,9 @@
 
         // Check if plane is in field of view
         function isInFieldOfView(planeBearing, planeElevation) {
-            const compassHeading = deviceOrientation.alpha;
+            if (compassHeading === null) return false;
             const devicePitch = getDevicePitch();
-            
+
             // Horizontal field of view (assume ~70 degrees for phone camera)
             const hFOV = 70;
             let bearingDiff = Math.abs(planeBearing - compassHeading);
@@ -565,7 +729,6 @@
 
         // Convert plane position to screen coordinates
         function planeToScreenPosition(planeBearing, planeElevation) {
-            const compassHeading = deviceOrientation.alpha;
             const devicePitch = getDevicePitch();
 
             // Horizontal position
@@ -605,10 +768,11 @@
                 const elevation = calculateElevation(distance, plane.baro_altitude || 0);
 
                 // Filter criteria:
-                // 1. Distance: within 20km (planes beyond this are hard to see)
+                // 1. Distance: an airliner at cruise is routinely visible 50-100km out,
+                //    so a tight radius hides most of what you can actually see.
                 // 2. Elevation: above 5° (filter out planes below horizon/too low)
                 // 3. Must be in field of view
-                const MAX_DISTANCE = 20; // km
+                const MAX_DISTANCE = 80; // km
                 const MIN_ELEVATION = 5; // degrees above horizon
                 
                 if (distance < MAX_DISTANCE && 
@@ -665,74 +829,79 @@
         }
 
         // Get route information from various APIs
-        async function getRouteInfo(callsign, icao24) {
-            if (!callsign || callsign === 'N/A') {
-                return null;
-            }
+        // Airlines reuse one flight number for several legs in a day, and the callsign
+        // databases map a callsign to a single canonical route with no notion of which
+        // leg is currently airborne. So a plane overhead can come back tagged with a
+        // route on the far side of the country. A plane actually flying a route sits
+        // near the line between its endpoints, so reject the route when the detour
+        // through the plane's position is implausibly long.
+        function routeMatchesPosition(plane, origin, destination) {
+            if (!origin?.latitude || !destination?.latitude) return true; // can't check
+            if (plane.latitude == null || plane.longitude == null) return true;
 
-            // Try hexdb.io first
+            const toOrigin = calculateDistance(
+                plane.latitude, plane.longitude, origin.latitude, origin.longitude);
+            const toDest = calculateDistance(
+                plane.latitude, plane.longitude, destination.latitude, destination.longitude);
+            const direct = calculateDistance(
+                origin.latitude, origin.longitude, destination.latitude, destination.longitude);
+
+            const excess = toOrigin + toDest - direct;
+            // Absolute floor covers vectoring, holds and weather deviation on short
+            // hops; the percentage covers great-circle routes that bow away from the
+            // straight line on long ones.
+            const tolerance = Math.max(200, direct * 0.15);
+            return excess <= tolerance;
+        }
+
+        async function getRouteInfo(plane) {
+            const callsign = plane.callsign;
+            const icao24 = plane.icao24;
+            const info = { source: [] };
+
+            // hexdb gives the airframe; adsbdb gives the route. They answer different
+            // questions, so query both rather than treating one as the other's fallback.
             try {
-                const hexdbUrl = `https://hexdb.io/api/v1/aircraft/${icao24}`;
-                const response = await fetch(hexdbUrl);
-                
+                const response = await fetch(`https://hexdb.io/api/v1/aircraft/${icao24}`);
                 if (response.ok) {
                     const data = await response.json();
                     if (data && data.aircraft) {
-                        return {
-                            registration: data.aircraft.registration,
-                            type: data.aircraft.type,
-                            source: 'hexdb'
-                        };
+                        info.registration = data.aircraft.registration;
+                        info.type = data.aircraft.type;
+                        info.source.push('hexdb');
                     }
                 }
             } catch (error) {
                 console.log('hexdb.io lookup failed:', error);
             }
 
-            // Try adsbdb.com as fallback
-            try {
-                const adsbdbUrl = `https://api.adsbdb.com/v0/callsign/${callsign.trim()}`;
-                const response = await fetch(adsbdbUrl);
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data && data.response && data.response.flightroute) {
-                        const route = data.response.flightroute;
-                        return {
-                            airline: route.airline?.name,
-                            origin: route.origin?.name || route.origin?.iata_code,
-                            originCity: route.origin?.municipality,
-                            destination: route.destination?.name || route.destination?.iata_code,
-                            destinationCity: route.destination?.municipality,
-                            flightNumber: route.callsign_iata || callsign,
-                            source: 'adsbdb'
-                        };
+            if (callsign && callsign !== 'N/A') {
+                try {
+                    const response = await fetch(
+                        `https://api.adsbdb.com/v0/callsign/${callsign.trim()}`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        const route = data?.response?.flightroute;
+                        if (route && routeMatchesPosition(plane, route.origin, route.destination)) {
+                            info.airline = route.airline?.name;
+                            info.origin = route.origin?.name || route.origin?.iata_code;
+                            info.originCity = route.origin?.municipality;
+                            info.destination = route.destination?.name || route.destination?.iata_code;
+                            info.destinationCity = route.destination?.municipality;
+                            info.flightNumber = route.callsign_iata || callsign;
+                            info.source.push('adsbdb');
+                        } else if (route) {
+                            console.log(
+                                `Rejected route for ${callsign}: ${route.origin?.iata_code}->` +
+                                `${route.destination?.iata_code} is inconsistent with position`);
+                        }
                     }
+                } catch (error) {
+                    console.log('adsbdb.com lookup failed:', error);
                 }
-            } catch (error) {
-                console.log('adsbdb.com lookup failed:', error);
             }
 
-            // Try OpenSky's own route API
-            try {
-                const openskyUrl = `https://opensky-network.org/api/routes?callsign=${callsign.trim()}`;
-                const response = await fetch(openskyUrl);
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data && data.route && data.route.length >= 2) {
-                        return {
-                            origin: data.route[0],
-                            destination: data.route[data.route.length - 1],
-                            source: 'opensky'
-                        };
-                    }
-                }
-            } catch (error) {
-                console.log('OpenSky route lookup failed:', error);
-            }
-
-            return null;
+            return info.source.length ? info : null;
         }
 
         // Format airport name for display
@@ -771,8 +940,12 @@
             infoPanel.classList.add('active');
 
             // Fetch route information in the background
-            const routeInfo = await getRouteInfo(plane.callsign, plane.icao24);
-            
+            const routeInfo = await getRouteInfo(plane);
+
+            // The user may have tapped a different plane while this was in flight;
+            // don't paint stale results over the newer selection.
+            if (selectedPlane !== plane) return;
+
             if (routeInfo) {
                 // Update with route information
                 if (routeInfo.airline) {

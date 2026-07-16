@@ -1,0 +1,47 @@
+name = "jetlens-opensky-proxy"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+[vars]
+# Comma-separated list of origins allowed to call this proxy. An origin is
+# scheme + host (+ port) with NO trailing path:
+#   https://briangunzenhauser.github.io      correct
+#   https://briangunzenhauser.github.io/air/ WRONG -- will never match
+#
+# Empty means allow ANY origin.
+#
+# The page is served from https://boxandpixel.github.io/air/ -- note the origin
+# below has no /air/ path. The path comes from the repo name and is irrelevant to
+# CORS; including it here would break every request.
+#
+# Add more hosts comma-separated when the app moves (a personal account, or
+# jetlens.app). Keep the old entry listed until the move is done, then drop it.
+ALLOWED_ORIGINS = "https://boxandpixel.github.io"
+
+
+# ---------------------------------------------------------------------------
+# Same-origin setup, for when jetlens.app exists.
+#
+# Serving the page and this Worker from one origin removes CORS from the picture
+# entirely -- no allowlist, no preflight, nothing to misconfigure. To switch:
+#
+#   1. Add jetlens.app to Cloudflare (buying it there sets up the zone for you).
+#   2. Deploy the page to Cloudflare Pages on that domain. GitHub Pages cannot do
+#      this -- it can't route a path to a Worker, so staying there means keeping
+#      CORS forever.
+#   3. Uncomment the route below and `wrangler deploy`.
+#   4. Set PROXY_URL in index.html to '/api' -- a relative URL, so the request is
+#      same-origin and the browser never runs a CORS check at all.
+#   5. ALLOWED_ORIGINS then becomes irrelevant; leaving it empty is fine, since a
+#      same-origin fetch sends no Origin header to match anyway.
+#
+# [[routes]]
+# pattern = "jetlens.app/api/*"
+# zone_name = "jetlens.app"
+# ---------------------------------------------------------------------------
+
+
+# OPENSKY_CLIENT_ID and OPENSKY_CLIENT_SECRET are NOT set here -- they are
+# secrets and must never be committed. Set them with:
+#   wrangler secret put OPENSKY_CLIENT_ID
+#   wrangler secret put OPENSKY_CLIENT_SECRET
