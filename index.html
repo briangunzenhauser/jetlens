@@ -832,69 +832,181 @@
             return Math.atan2(altitude, distanceM) * 180 / Math.PI;
         }
 
-        // Get device pitch (tilt) - handles different orientations
+        // Elevation the camera is pointed at: 0° = horizon, 90° = straight up.
+        // Reported in the debug panel; the projection reads the camera basis directly.
+        //
+        // This used to be `beta - 90`, which is only right while the phone is held
+        // flat-on. Roll the phone and beta no longer describes where the camera looks
+        // -- held sideways, beta goes to 0 whatever the camera is aimed at. Reading
+        // the tilt matrix instead stays correct at any roll, and can't produce the
+        // out-of-range values the old subtraction did for negative beta.
         function getDevicePitch() {
-            const beta = deviceOrientation.beta;
-            
-            // Actual device behavior (based on testing):
-            // beta = 90° means pointing at horizon (0° elevation)
-            // beta = 180° means pointing straight up (90° elevation)
-            // beta = 0° means pointing straight down (-90° elevation)
-            
-            // Calculate pitch (elevation angle where phone is pointed)
-            // We want: 0° = horizon, 90° = straight up, -90° = straight down
-            
-            let pitch;
-            
-            if (beta >= 0 && beta <= 180) {
-                // Linear mapping: beta 90→0°, beta 180→90°, beta 0→-90°
-                pitch = beta - 90;
-            } else {
-                // Handle wrap-around for negative beta values (some devices)
-                pitch = beta - 90;
+            const m = orientationMatrix(
+                deviceOrientation.alpha,
+                deviceOrientation.beta,
+                deviceOrientation.gamma
+            );
+            const forward = apply(m, [0, 0, -1]);
+            return Math.asin(Math.max(-1, Math.min(1, forward[2]))) * 180 / Math.PI;
+        }
+
+        // Camera field of view, degrees.
+        const H_FOV = 70;
+        const V_FOV = 50;
+
+        // Bearing and elevation are spherical coordinates, not independent flat axes:
+        // they converge at the zenith, where every bearing points at the same patch of
+        // sky. Comparing them separately therefore breaks as you look up -- at 85°
+        // elevation, 35° of bearing spans only 3° of actual sky, so a plane passing
+        // directly overhead gets rejected for a compass mismatch that means nothing.
+        //
+        // Instead, turn both directions into unit vectors and do the comparison in the
+        // camera's own frame. The singularity disappears because vectors don't have one.
+        //
+        // Local frame is ENU: x = east, y = north, z = up.
+        function toVector(azimuth, elevation) {
+            const az = azimuth * Math.PI / 180;
+            const el = elevation * Math.PI / 180;
+            const cos = Math.cos(el);
+            return [cos * Math.sin(az), cos * Math.cos(az), Math.sin(el)];
+        }
+
+        function dot(a, b) {
+            return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+        }
+
+        function cross(a, b) {
+            return [
+                a[1] * b[2] - a[2] * b[1],
+                a[2] * b[0] - a[0] * b[2],
+                a[0] * b[1] - a[1] * b[0]
+            ];
+        }
+
+        // Rotation carrying the device's own axes into world ENU coordinates.
+        //
+        // The DeviceOrientation spec defines it as Rz(alpha) then Rx(beta) then
+        // Ry(gamma), which this evaluates as a matrix product. Working with the matrix
+        // rather than the angles matters: held upright -- exactly how you hold a phone
+        // to look at the sky -- alpha and gamma go degenerate and each jitters wildly
+        // on its own. Their product does not, because the jitter cancels. So the
+        // orientation stays trustworthy even where the individual angles are junk.
+        //
+        // Alpha's zero point is arbitrary and drifts; cameraBasis corrects for that.
+        //
+        // Device axes: x across the screen to the right, y up the screen, z out of
+        // the front. The camera looks out the back, so it points along -z.
+        function orientationMatrix(alpha, beta, gamma) {
+            const a = alpha * Math.PI / 180;
+            const b = beta * Math.PI / 180;
+            const g = gamma * Math.PI / 180;
+            const ca = Math.cos(a), sa = Math.sin(a);
+            const cb = Math.cos(b), sb = Math.sin(b);
+            const cg = Math.cos(g), sg = Math.sin(g);
+
+            // Rz(alpha) * Rx(beta) * Ry(gamma)
+            return [
+                [ca * cg - sa * sb * sg, -sa * cb, ca * sg + sa * sb * cg],
+                [sa * cg + ca * sb * sg,  ca * cb, sa * sg - ca * sb * cg],
+                [-cb * sg,                sb,      cb * cg               ]
+            ];
+        }
+
+        function apply(m, v) {
+            return [
+                m[0][0] * v[0] + m[0][1] * v[1] + m[0][2] * v[2],
+                m[1][0] * v[0] + m[1][1] * v[1] + m[1][2] * v[2],
+                m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2]
+            ];
+        }
+
+        // Turn a vector's compass azimuth by `deg` clockwise, about the vertical.
+        function spin(v, deg) {
+            const a = deg * Math.PI / 180;
+            const cos = Math.cos(a), sin = Math.sin(a);
+            return [v[0] * cos + v[1] * sin, v[1] * cos - v[0] * sin, v[2]];
+        }
+
+        // How far alpha's arbitrary zero sits from true north. Persisted across frames
+        // because it can only be measured in some poses -- see below.
+        let headingOffset = 0;
+        let headingOffsetKnown = false;
+
+        // Where the camera points, plus the two axes spanning its image plane. All
+        // three carry the phone's roll, so tilting the phone rotates the overlay with
+        // the world instead of leaving it glued to the screen edges.
+        function cameraBasis() {
+            const m = orientationMatrix(
+                deviceOrientation.alpha,
+                deviceOrientation.beta,
+                deviceOrientation.gamma
+            );
+            const forward = apply(m, [0, 0, -1]);
+            const right = apply(m, [1, 0, 0]);
+            const up = apply(m, [0, 1, 0]);
+
+            // Alpha carries the yaw, but from an arbitrary origin, so the frame has to
+            // be spun onto true north. The size of that spin is only observable while
+            // the camera is far enough from vertical for its bearing to mean anything:
+            // near the zenith `forward` is almost straight up and its horizontal part
+            // is mostly noise -- at 88° pitch a 2° wobble swings the bearing 45°, which
+            // would spin the whole overlay.
+            //
+            // So measure the offset whenever the pose allows, and otherwise keep the
+            // last known value. That is sound because the offset is a slowly-drifting
+            // property of the magnetometer, not something that changes as you move the
+            // phone -- alpha already tracks the movement.
+            if (compassHeading !== null && Math.abs(forward[2]) < 0.9) {
+                const azimuth = Math.atan2(forward[0], forward[1]) * 180 / Math.PI;
+                headingOffset = compassHeading - azimuth;
+                headingOffsetKnown = true;
             }
-            
-            return pitch;
+
+            // Before the offset has ever been measured, fall back to treating alpha's
+            // origin as north. Wrong by a constant until you lower the phone once.
+            const correction = headingOffsetKnown ? headingOffset : 0;
+
+            return {
+                forward: spin(forward, correction),
+                right: spin(right, correction),
+                up: spin(up, correction)
+            };
+        }
+
+        // Angular offsets of a direction from the camera axis, in degrees:
+        // x positive to the right, y positive upward. Null when behind the camera.
+        function angularOffset(planeBearing, planeElevation) {
+            const { forward, right, up } = cameraBasis();
+            const p = toVector(planeBearing, planeElevation);
+
+            const z = dot(p, forward);
+            if (z <= 0) return null; // behind us; atan2 below would wrap it to the front
+
+            return {
+                x: Math.atan2(dot(p, right), z) * 180 / Math.PI,
+                y: Math.atan2(dot(p, up), z) * 180 / Math.PI
+            };
         }
 
         // Check if plane is in field of view
         function isInFieldOfView(planeBearing, planeElevation) {
             if (compassHeading === null) return false;
-            const devicePitch = getDevicePitch();
 
-            // Horizontal field of view (assume ~70 degrees for phone camera)
-            const hFOV = 70;
-            let bearingDiff = Math.abs(planeBearing - compassHeading);
-            if (bearingDiff > 180) bearingDiff = 360 - bearingDiff;
+            const offset = angularOffset(planeBearing, planeElevation);
+            if (offset === null) return false;
 
-            // Vertical field of view
-            const vFOV = 50;
-            const elevationDiff = Math.abs(planeElevation - devicePitch);
-
-            const inHorizontalFOV = bearingDiff < hFOV / 2;
-            const inVerticalFOV = elevationDiff < vFOV / 2;
-
-            return inHorizontalFOV && inVerticalFOV;
+            return Math.abs(offset.x) < H_FOV / 2 && Math.abs(offset.y) < V_FOV / 2;
         }
 
         // Convert plane position to screen coordinates
         function planeToScreenPosition(planeBearing, planeElevation) {
-            const devicePitch = getDevicePitch();
+            const offset = angularOffset(planeBearing, planeElevation);
+            if (offset === null) return { x: -1, y: -1 }; // rejected by the caller's bounds check
 
-            // Horizontal position
-            let bearingDiff = planeBearing - compassHeading;
-            if (bearingDiff > 180) bearingDiff -= 360;
-            if (bearingDiff < -180) bearingDiff += 360;
-
-            const hFOV = 70;
-            const x = (bearingDiff / hFOV + 0.5) * window.innerWidth;
-
-            // Vertical position
-            const elevationDiff = planeElevation - devicePitch;
-            const vFOV = 50;
-            const y = (0.5 - elevationDiff / vFOV) * window.innerHeight;
-
-            return { x, y };
+            return {
+                x: (0.5 + offset.x / H_FOV) * window.innerWidth,
+                y: (0.5 - offset.y / V_FOV) * window.innerHeight
+            };
         }
 
         // Update plane markers on screen
