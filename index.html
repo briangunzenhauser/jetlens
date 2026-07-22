@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>JetLens</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;800&display=swap" rel="stylesheet">
     <style>
         * {
             margin: 0;
@@ -170,7 +173,16 @@
             --sky-700: #0468B8;
             --sky-600: #0A78C7;
             --sky-500: #0D95F2;
+            --sky-300: #7CC3F7;
             --sky-200: #A9D9F9;
+            --sky-100: #D9ECFC;
+
+            /* Midnight blue for type and controls on the start screen. Sits on the
+               same hue as the sky blues rather than the cooler, more violet navy it
+               started as -- against a saturated sky the difference read as two
+               unrelated blues. Dark enough for 7:1 contrast anywhere in the gradient. */
+            --midnight: #0B2C4D;
+            --midnight-soft: #12406B;
         }
 
         #loading {
@@ -179,26 +191,77 @@
             left: 0;
             width: 100vw;
             height: 100vh;
-            background: #000;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             z-index: 1000;
+
+            /* Sky washing through white, drawn from the same --sky-* palette as the
+               intro card so the two screens read as one place. Oversized so there is
+               somewhere to drift to -- the gradient is larger than the viewport and
+               the animation slides it, which costs nothing to composite and never
+               repaints. Stops stay at or above --sky-300 so the midnight wordmark
+               keeps its contrast wherever the gradient happens to sit. */
+            background: linear-gradient(
+                125deg,
+                #FFFFFF 0%,
+                var(--sky-100) 18%,
+                var(--sky-200) 38%,
+                var(--sky-300) 52%,
+                var(--sky-200) 66%,
+                var(--sky-100) 84%,
+                #FFFFFF 100%
+            );
+            background-size: 280% 280%;
+            animation: sky-drift 26s ease-in-out infinite;
+        }
+
+        /* Slow enough to read as light changing rather than as motion. */
+        @keyframes sky-drift {
+            0%   { background-position:   0% 50%; }
+            50%  { background-position: 100% 50%; }
+            100% { background-position:   0% 50%; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            #loading { animation: none; }
         }
 
         #loading.hidden {
             display: none;
         }
 
+        #brand {
+            font-family: 'Sora', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-weight: 800;
+            font-size: clamp(46px, 16vw, 82px);
+            letter-spacing: -0.03em;
+            line-height: 1;
+            color: var(--midnight);
+        }
+
+        #tagline {
+            margin-top: 14px;
+            font-family: 'Sora', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-weight: 600;
+            font-size: clamp(11px, 3.4vw, 14px);
+            /* Wide tracking to sit the tagline under the wordmark as a rule of type
+               rather than as a second, competing headline. */
+            letter-spacing: 0.34em;
+            text-transform: uppercase;
+            color: rgba(11, 44, 77, 0.55);
+        }
+
         .spinner {
-            width: 50px;
-            height: 50px;
-            border: 3px solid rgba(255, 255, 255, 0.2);
-            border-top-color: var(--sky-500);
+            width: 40px;
+            height: 40px;
+            margin-top: 44px;
+            margin-bottom: 18px;
+            border: 3px solid rgba(11, 44, 77, 0.15);
+            border-top-color: var(--midnight);
             border-radius: 50%;
             animation: spin 1s linear infinite;
-            margin-bottom: 20px;
         }
 
         @keyframes spin {
@@ -206,30 +269,31 @@
         }
 
         #loading-text {
-            font-size: 16px;
-            color: rgba(255, 255, 255, 0.8);
+            font-size: 15px;
+            color: rgba(11, 44, 77, 0.65);
             text-align: center;
             padding: 0 40px;
         }
 
         #start-btn {
-            margin-top: 30px;
-            padding: 16px 36px;
-            background: var(--sky-500);
-            color: white;
+            margin-top: 46px;
+            padding: 16px 38px;
+            background: var(--midnight);
+            color: #FFFFFF;
             border: none;
             border-radius: 12px;
-            font-size: 18px;
+            font-family: 'Sora', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-size: 17px;
             font-weight: 600;
             letter-spacing: 0.2px;
             cursor: pointer;
-            transition: background 0.2s, box-shadow 0.2s;
-            box-shadow: 0 4px 20px rgba(13, 149, 242, 0.35);
+            transition: background 0.2s, box-shadow 0.2s, transform 0.1s;
+            box-shadow: 0 6px 22px rgba(11, 44, 77, 0.28);
         }
 
         #start-btn:hover {
-            background: var(--sky-600);
-            box-shadow: 0 4px 24px rgba(13, 149, 242, 0.5);
+            background: var(--midnight-soft);
+            box-shadow: 0 8px 28px rgba(11, 44, 77, 0.36);
         }
 
         #start-btn:active {
@@ -243,7 +307,7 @@
             text-align: center;
             font-size: 13px;
             line-height: 1.5;
-            color: rgba(255, 255, 255, 0.55);
+            color: rgba(11, 44, 77, 0.5);
         }
 
         /* Shown once permissions are granted, then fades itself out. Never
@@ -329,6 +393,8 @@
 </head>
 <body>
     <div id="loading">
+        <h1 id="brand">JetLens</h1>
+        <p id="tagline">AR Flight Tracking</p>
         <div class="spinner"></div>
         <div id="loading-text">Initializing camera and sensors...</div>
         <button id="start-btn" style="display: none;">Start JetLens</button>
