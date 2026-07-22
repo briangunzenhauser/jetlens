@@ -385,15 +385,20 @@
     </div>
 
     <script>
-        // Cloudflare Worker that proxies OpenSky (see worker/README.md). OpenSky's
-        // API sends no CORS headers usable from this origin, so requests for plane
-        // data must go through the proxy.
+        // Server-side proxy for OpenSky. OpenSky's API sends no CORS headers usable
+        // from this origin, so requests for plane data must go through it.
         //
-        // Two valid forms:
-        //   'https://jetlens-opensky-proxy.<subdomain>.workers.dev'  cross-origin;
-        //       the origin must be listed in the Worker's ALLOWED_ORIGINS.
-        //   '/api'  same-origin, once the page and Worker share a domain. Preferred:
-        //       the browser runs no CORS check at all.
+        // The Cloudflare Worker below is DEAD: OpenSky's auth server stopped
+        // accepting connections from Workers egress IPs and every token request
+        // times out with a 522. The replacement is a Netlify Function -- see
+        // netlify/functions/opensky.mjs. Set this to whichever applies:
+        //
+        //   '/api/opensky'  same-origin, when the page is served from the same
+        //       Netlify site as the function. Preferred: the browser runs no CORS
+        //       check at all and ALLOWED_ORIGINS stops mattering.
+        //   'https://<site>.netlify.app/api/opensky'  cross-origin, when the page
+        //       stays on GitHub Pages. The page's origin must be listed in the
+        //       function's ALLOWED_ORIGINS.
         const PROXY_URL = 'https://jetlens-opensky-proxy.boxandpixel.workers.dev';
 
         // Global state
@@ -608,7 +613,7 @@
                 const lomin = lon - 2;
                 const lomax = lon + 2;
 
-                const url = `${PROXY_URL}/?lamin=${lamin}&lomin=${lomin}&lamax=${lamax}&lomax=${lomax}`;
+                const url = `${PROXY_URL}?lamin=${lamin}&lomin=${lomin}&lamax=${lamax}&lomax=${lomax}`;
 
                 const response = await fetch(url);
                 if (!response.ok) {

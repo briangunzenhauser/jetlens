@@ -1,0 +1,4 @@
+# Netlify CLI state and local build output.
+.netlify/
+
+node_modules/
