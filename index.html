@@ -1097,23 +1097,62 @@
         // route on the far side of the country. A plane actually flying a route sits
         // near the line between its endpoints, so reject the route when the detour
         // through the plane's position is implausibly long.
+        const EARTH_RADIUS_KM = 6371;
+
+        // How far off its own route a flight may be and still be believed. Measured
+        // against live traffic: genuine routes sit within 157 km of their corridor,
+        // while mismatched ones start at 1542 km, so anywhere in that gap works.
+        const ROUTE_CORRIDOR_KM = 400;
+
+        // Unit vector for a point on the globe, for the corridor test below.
+        function geoVector(lat, lon) {
+            const la = lat * Math.PI / 180;
+            const lo = lon * Math.PI / 180;
+            return [Math.cos(la) * Math.cos(lo), Math.cos(la) * Math.sin(lo), Math.sin(la)];
+        }
+
+        function normalize(v) {
+            const m = Math.hypot(v[0], v[1], v[2]);
+            return m === 0 ? v : [v[0] / m, v[1] / m, v[2] / m];
+        }
+
         function routeMatchesPosition(plane, origin, destination) {
             if (!origin?.latitude || !destination?.latitude) return true; // can't check
             if (plane.latitude == null || plane.longitude == null) return true;
 
-            const toOrigin = calculateDistance(
-                plane.latitude, plane.longitude, origin.latitude, origin.longitude);
-            const toDest = calculateDistance(
-                plane.latitude, plane.longitude, destination.latitude, destination.longitude);
-            const direct = calculateDistance(
-                origin.latitude, origin.longitude, destination.latitude, destination.longitude);
+            const o = geoVector(origin.latitude, origin.longitude);
+            const d = geoVector(destination.latitude, destination.longitude);
+            const p = geoVector(plane.latitude, plane.longitude);
+            const clamp = x => Math.max(-1, Math.min(1, x));
 
-            const excess = toOrigin + toDest - direct;
-            // Absolute floor covers vectoring, holds and weather deviation on short
-            // hops; the percentage covers great-circle routes that bow away from the
-            // straight line on long ones.
-            const tolerance = Math.max(200, direct * 0.15);
-            return excess <= tolerance;
+            // This replaced a test on excess detour -- origin->plane->destination
+            // against origin->destination. That draws an ellipse with the airports as
+            // foci, and its width grows with the route: about ±1000 km at the midpoint
+            // of a transcontinental flight, ±2500 km on a long haul. A plane over Los
+            // Angeles therefore passed as flying Charlotte->San Francisco. Measuring
+            // perpendicular distance instead gives a corridor of constant width, which
+            // is what "on its route" actually means.
+            const normal = normalize(cross(o, d));
+            const offRoute = dot(normal, p);
+            if (Math.abs(Math.asin(clamp(offRoute))) * EARTH_RADIUS_KM > ROUTE_CORRIDOR_KM) {
+                return false;
+            }
+
+            // Being near the great circle is not enough: it wraps the whole globe, so
+            // a route between two other continents can still pass overhead. Require the
+            // plane to sit between the endpoints as well. Drop the plane onto the route
+            // plane, then measure the angle from the origin.
+            const projected = normalize([
+                p[0] - offRoute * normal[0],
+                p[1] - offRoute * normal[1],
+                p[2] - offRoute * normal[2]
+            ]);
+
+            let along = Math.acos(clamp(dot(o, projected))) * EARTH_RADIUS_KM;
+            if (dot(cross(o, projected), normal) < 0) along = -along; // behind the origin
+            const segment = Math.acos(clamp(dot(o, d))) * EARTH_RADIUS_KM;
+
+            return along > -ROUTE_CORRIDOR_KM && along < segment + ROUTE_CORRIDOR_KM;
         }
 
         async function getRouteInfo(plane) {
@@ -1218,18 +1257,22 @@
                     document.getElementById('flight-number').textContent = routeInfo.flightNumber;
                 }
                 
+                // 'Unavailable' rather than 'Unknown': the usual reason to land here is
+                // that a route came back and was rejected as inconsistent with where
+                // the plane actually is, so we are withholding an answer rather than
+                // failing to find one.
                 if (routeInfo.origin) {
-                    document.getElementById('origin').textContent = 
+                    document.getElementById('origin').textContent =
                         formatAirport(routeInfo.origin, routeInfo.originCity);
                 } else {
-                    document.getElementById('origin').textContent = 'Unknown';
+                    document.getElementById('origin').textContent = 'Unavailable';
                 }
-                
+
                 if (routeInfo.destination) {
-                    document.getElementById('destination').textContent = 
+                    document.getElementById('destination').textContent =
                         formatAirport(routeInfo.destination, routeInfo.destinationCity);
                 } else {
-                    document.getElementById('destination').textContent = 'Unknown';
+                    document.getElementById('destination').textContent = 'Unavailable';
                 }
                 
                 if (routeInfo.type) {
