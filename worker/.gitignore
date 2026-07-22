@@ -1,6 +1,0 @@
-# Local secrets for `wrangler dev` -- must never be committed.
-.dev.vars
-.dev.vars.*
-
-node_modules/
-.wrangler/

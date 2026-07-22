@@ -1,26 +1,5 @@
-# There is no build step -- index.html is served as-is from the repo root.
+# JetLens is a single static page -- no build step, no functions, no secrets.
+# Aircraft data comes straight from api.airplanes.live in the browser; see the
+# comment above API_BASE in index.html for why there is no proxy.
 [build]
   publish = "."
-  functions = "netlify/functions"
-
-[build.environment]
-  # Comma-separated list of origins allowed to call the proxy. An origin is
-  # scheme + host (+ port) with NO trailing path:
-  #   https://boxandpixel.github.io       correct
-  #   https://boxandpixel.github.io/air/  WRONG -- will never match
-  #
-  # Empty means allow ANY origin.
-  #
-  # This only matters if the page is served from somewhere other than this
-  # Netlify site. Same-origin requests send no Origin header and skip CORS
-  # entirely, so the list is ignored in that setup -- harmless to leave.
-  #
-  # Listed below: GitHub Pages, where the page currently lives. Add the Netlify
-  # site's own URL too if you serve the page from both during a transition.
-  ALLOWED_ORIGINS = "https://boxandpixel.github.io"
-
-# OPENSKY_CLIENT_ID and OPENSKY_CLIENT_SECRET are NOT set here -- they are
-# secrets and must never be committed. Set them with:
-#   netlify env:set OPENSKY_CLIENT_ID <id> --secret
-#   netlify env:set OPENSKY_CLIENT_SECRET <secret> --secret
-# or through Site configuration > Environment variables in the Netlify UI.
