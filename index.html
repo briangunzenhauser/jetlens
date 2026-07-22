@@ -385,21 +385,157 @@
     </div>
 
     <script>
-        // Server-side proxy for OpenSky. OpenSky's API sends no CORS headers usable
-        // from this origin, so requests for plane data must go through it.
+        // Aircraft data comes from airplanes.live, called directly from the browser.
         //
-        // The Cloudflare Worker below is DEAD: OpenSky's auth server stopped
-        // accepting connections from Workers egress IPs and every token request
-        // times out with a 522. The replacement is a Netlify Function -- see
-        // netlify/functions/opensky.mjs. Set this to whichever applies:
+        // This replaced OpenSky, which blocks datacenter IP ranges outright -- every
+        // connection from Cloudflare Workers AND Netlify Functions timed out at the
+        // TCP level while the same request from a laptop succeeded. No serverless
+        // proxy can reach it, so there is no proxy to host anymore: airplanes.live
+        // sends `Access-Control-Allow-Origin: *`, which the browser can call directly.
         //
-        //   '/api/opensky'  same-origin, when the page is served from the same
-        //       Netlify site as the function. Preferred: the browser runs no CORS
-        //       check at all and ALLOWED_ORIGINS stops mattering.
-        //   'https://<site>.netlify.app/api/opensky'  cross-origin, when the page
-        //       stays on GitHub Pages. The page's origin must be listed in the
-        //       function's ALLOWED_ORIGINS.
-        const PROXY_URL = 'https://jetlens-opensky-proxy.boxandpixel.workers.dev';
+        // Terms (https://airplanes.live/api-guide/): non-commercial use, no SLA, and
+        // rate limited to 1 request/second. We poll every 10s, well inside that.
+        // They ask that API users contribute data back to the network.
+        const API_BASE = 'https://api.airplanes.live/v2';
+
+        // Request radius in nautical miles. MAX_DISTANCE below filters to 80km (~43nm)
+        // for display, so this only needs enough margin to cover it.
+        const FETCH_RADIUS_NM = 50;
+
+        // airplanes.live reports feet and knots; the rest of this file works in the
+        // meters and m/s that OpenSky used, and converts to ft/kt only for display.
+        // Normalizing here keeps every calculation downstream untouched.
+        const FT_PER_M = 3.28084;
+        const KT_PER_MS = 1.94384;
+        const FTMIN_PER_MS = 196.85;
+
+        // Commercial flights identify themselves with an ICAO airline code plus a
+        // flight number (UAL1783, SWA2431); general aviation uses the tail number
+        // instead (N618DH). Matching that shape alone still lets through charter,
+        // fractional, cargo and flight-school operators that file airline-style
+        // callsigns -- LXJ (Flexjet), JSX, CXK (ATP Flight School), ATN (Amazon
+        // Air). So the shape is only a precondition; the code must also be on the
+        // list below.
+        //
+        // These are ICAO codes, NOT the IATA codes on tickets and tailfins:
+        // Lufthansa is DLH not LH, Emirates UAE not EK, British Airways BAW not BA.
+        //
+        // Passenger airlines only. Adding a carrier is a one-line change.
+        const CARRIERS = new Set([
+            // --- US mainline ---
+            'AAL', // American
+            'DAL', // Delta
+            'UAL', // United
+            'SWA', // Southwest
+            'ASA', // Alaska
+            'JBU', // JetBlue
+            'NKS', // Spirit
+            'FFT', // Frontier
+            'HAL', // Hawaiian
+            'SCX', // Sun Country
+            'AAY', // Allegiant
+            'MXY', // Breeze
+
+            // --- US regionals, flying in mainline colors as Express/Connection ---
+            'SKW', // SkyWest
+            'QXE', // Horizon Air (Alaska)
+            'ENY', // Envoy (American Eagle)
+            'RPA', // Republic
+            'EDV', // Endeavor (Delta Connection)
+            'JIA', // PSA (American Eagle)
+            'PDT', // Piedmont (American Eagle)
+            'AWI', // Air Wisconsin
+            'ASH', // Mesa
+            'GJS', // GoJet
+            'UCA', // CommutAir (United Express)
+
+            // --- Canada / Mexico / Latin America ---
+            'ACA', // Air Canada
+            'WJA', // WestJet
+            'TSC', // Air Transat
+            'AMX', // Aeromexico
+            'VOI', // Volaris
+            'VIV', // Viva Aerobus
+            'CMP', // Copa
+            'AVA', // Avianca
+            'LAN', // LATAM Chile
+            'TAM', // LATAM Brazil
+            'GLO', // Gol
+            'AZU', // Azul
+            'ARG', // Aerolineas Argentinas
+
+            // --- Europe ---
+            'DLH', // Lufthansa
+            'BAW', // British Airways
+            'AFR', // Air France
+            'KLM', // KLM
+            'SWR', // Swiss
+            'AUA', // Austrian
+            'IBE', // Iberia
+            'TAP', // TAP Portugal
+            'SAS', // Scandinavian
+            'FIN', // Finnair
+            'VIR', // Virgin Atlantic
+            'ITY', // ITA Airways
+            'THY', // Turkish
+            'AEE', // Aegean
+            'LOT', // LOT Polish
+            'CSA', // Czech
+            'EIN', // Aer Lingus
+            'ICE', // Icelandair
+            'BEL', // Brussels
+            'NAX', // Norwegian
+
+            // --- Middle East / Africa ---
+            'UAE', // Emirates
+            'QTR', // Qatar
+            'ETD', // Etihad
+            'SVA', // Saudia
+            'MSR', // EgyptAir
+            'RJA', // Royal Jordanian
+            'ELY', // El Al
+            'ETH', // Ethiopian
+            'SAA', // South African
+            'RAM', // Royal Air Maroc
+            'KQA', // Kenya Airways
+
+            // --- Asia / Pacific ---
+            'SIA', // Singapore
+            'CPA', // Cathay Pacific
+            'ANA', // All Nippon
+            'JAL', // Japan Airlines
+            'KAL', // Korean Air
+            'AAR', // Asiana
+            'EVA', // EVA Air
+            'CAL', // China Airlines
+            'CCA', // Air China
+            'CES', // China Eastern
+            'CSN', // China Southern
+            'THA', // Thai
+            'MAS', // Malaysia
+            'GIA', // Garuda
+            'PAL', // Philippine
+            'HVN', // Vietnam Airlines
+            'AIC', // Air India
+            'QFA', // Qantas
+            'ANZ', // Air New Zealand
+            'VOZ', // Virgin Australia
+            'FJI', // Fiji Airways
+        ]);
+
+        // Altitude floor, metres. This is deliberately low: under an approach corridor
+        // the most interesting aircraft are the ones on final, and an airliner at 2,500
+        // feet passing overhead is the whole point of the app. Ground clutter is
+        // already handled by the on_ground flag and the carrier allowlist, so this only
+        // needs to catch aircraft still rolling out that never set on_ground.
+        //
+        // It was 1000 -- metres, not feet, so it silently hid everything below 3,281 ft.
+        const MIN_ALTITUDE = 200;
+
+        function isMajorCarrier(callsign) {
+            const match = callsign.match(/^([A-Z]{3})[0-9]/);
+            return match !== null && CARRIERS.has(match[1]);
+        }
 
         // Global state
         let userLocation = null;
@@ -600,44 +736,53 @@
             document.getElementById('debug-pitch').textContent = getDevicePitch().toFixed(1);
         }
 
-        // Fetch plane data from OpenSky Network API
+        // Fetch plane data from the airplanes.live API
         async function fetchPlanes() {
             if (!userLocation) return;
 
             try {
-                // Get planes within ~200km radius
-                const lat = userLocation.lat;
-                const lon = userLocation.lon;
-                const lamin = lat - 2;
-                const lamax = lat + 2;
-                const lomin = lon - 2;
-                const lomax = lon + 2;
-
-                const url = `${PROXY_URL}?lamin=${lamin}&lomin=${lomin}&lamax=${lamax}&lomax=${lomax}`;
+                const { lat, lon } = userLocation;
+                const url = `${API_BASE}/point/${lat}/${lon}/${FETCH_RADIUS_NM}`;
 
                 const response = await fetch(url);
                 if (!response.ok) {
-                    throw new Error(`proxy returned ${response.status}`);
+                    throw new Error(`airplanes.live returned ${response.status}`);
                 }
                 const data = await response.json();
 
-                if (data.states) {
-                    planes = data.states.map(state => ({
-                        icao24: state[0],
-                        callsign: state[1] ? state[1].trim() : 'N/A',
-                        origin_country: state[2],
-                        longitude: state[5],
-                        latitude: state[6],
-                        baro_altitude: state[7],
-                        velocity: state[9],
-                        true_track: state[10],
-                        vertical_rate: state[11],
-                        on_ground: state[8]
-                    })).filter(plane => 
-                        plane.latitude && 
-                        plane.longitude && 
+                if (Array.isArray(data.ac)) {
+                    planes = data.ac.map(ac => {
+                        // alt_baro is the string 'ground' for aircraft on the surface,
+                        // so it can't be treated as a number unconditionally.
+                        const onGround = ac.alt_baro === 'ground';
+                        // track is absent on ~20% of records; the heading fields are
+                        // the next best thing and are close enough for a bearing.
+                        const heading = ac.track ?? ac.true_heading ?? ac.mag_heading ?? null;
+                        // baro_rate is missing more often than not; geom_rate covers
+                        // most of the rest.
+                        const rate = ac.baro_rate ?? ac.geom_rate ?? null;
+
+                        return {
+                            icao24: ac.hex,
+                            callsign: ac.flight ? ac.flight.trim() : 'N/A',
+                            operator: ac.ownOp || null,
+                            registration: ac.r || null,
+                            aircraft_type: ac.t || null,
+                            aircraft_desc: ac.desc || null,
+                            longitude: ac.lon,
+                            latitude: ac.lat,
+                            baro_altitude: onGround ? 0 : ac.alt_baro / FT_PER_M,
+                            velocity: typeof ac.gs === 'number' ? ac.gs / KT_PER_MS : null,
+                            true_track: heading,
+                            vertical_rate: rate === null ? null : rate / FTMIN_PER_MS,
+                            on_ground: onGround
+                        };
+                    }).filter(plane =>
+                        plane.latitude &&
+                        plane.longitude &&
                         !plane.on_ground &&
-                        plane.baro_altitude > 1000
+                        plane.baro_altitude > MIN_ALTITUDE &&
+                        isMajorCarrier(plane.callsign)
                     );
 
                     planeCountEl.textContent = compassHeading === null
@@ -930,7 +1075,7 @@
 
             // Show panel immediately with basic info
             document.getElementById('flight-number').textContent = plane.callsign || 'Unknown Flight';
-            document.getElementById('airline-name').textContent = plane.origin_country || 'Unknown';
+            document.getElementById('airline-name').textContent = plane.operator || 'Unknown';
             
             const altitudeFt = plane.baro_altitude ? Math.round(plane.baro_altitude * 3.28084) : 0;
             document.getElementById('altitude').textContent = `${altitudeFt.toLocaleString()} ft`;
