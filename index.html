@@ -524,106 +524,111 @@
         // Lufthansa is DLH not LH, Emirates UAE not EK, British Airways BAW not BA.
         //
         // Passenger airlines only. Adding a carrier is a one-line change.
-        const CARRIERS = new Set([
+        //
+        // A Map, not a Set, so it doubles as the ICAO-code -> friendly-name lookup
+        // for the info panel. The route source (vrs-standing-data) reports the
+        // operating airline as an ICAO code only; this list already enumerates
+        // every carrier we display, so naming them here costs nothing extra.
+        const CARRIERS = new Map([
             // --- US mainline ---
-            'AAL', // American
-            'DAL', // Delta
-            'UAL', // United
-            'SWA', // Southwest
-            'ASA', // Alaska
-            'JBU', // JetBlue
-            'NKS', // Spirit
-            'FFT', // Frontier
-            'HAL', // Hawaiian
-            'SCX', // Sun Country
-            'AAY', // Allegiant
-            'MXY', // Breeze
+            ['AAL', 'American Airlines'],
+            ['DAL', 'Delta Air Lines'],
+            ['UAL', 'United Airlines'],
+            ['SWA', 'Southwest Airlines'],
+            ['ASA', 'Alaska Airlines'],
+            ['JBU', 'JetBlue'],
+            ['NKS', 'Spirit Airlines'],
+            ['FFT', 'Frontier Airlines'],
+            ['HAL', 'Hawaiian Airlines'],
+            ['SCX', 'Sun Country Airlines'],
+            ['AAY', 'Allegiant Air'],
+            ['MXY', 'Breeze Airways'],
 
             // --- US regionals, flying in mainline colors as Express/Connection ---
-            'SKW', // SkyWest
-            'QXE', // Horizon Air (Alaska)
-            'ENY', // Envoy (American Eagle)
-            'RPA', // Republic
-            'EDV', // Endeavor (Delta Connection)
-            'JIA', // PSA (American Eagle)
-            'PDT', // Piedmont (American Eagle)
-            'AWI', // Air Wisconsin
-            'ASH', // Mesa
-            'GJS', // GoJet
-            'UCA', // CommutAir (United Express)
+            ['SKW', 'SkyWest Airlines'],
+            ['QXE', 'Horizon Air'],
+            ['ENY', 'Envoy Air'],
+            ['RPA', 'Republic Airways'],
+            ['EDV', 'Endeavor Air'],
+            ['JIA', 'PSA Airlines'],
+            ['PDT', 'Piedmont Airlines'],
+            ['AWI', 'Air Wisconsin'],
+            ['ASH', 'Mesa Airlines'],
+            ['GJS', 'GoJet Airlines'],
+            ['UCA', 'CommutAir'],
 
             // --- Canada / Mexico / Latin America ---
-            'ACA', // Air Canada
-            'WJA', // WestJet
-            'TSC', // Air Transat
-            'AMX', // Aeromexico
-            'VOI', // Volaris
-            'VIV', // Viva Aerobus
-            'CMP', // Copa
-            'AVA', // Avianca
-            'LAN', // LATAM Chile
-            'TAM', // LATAM Brazil
-            'GLO', // Gol
-            'AZU', // Azul
-            'ARG', // Aerolineas Argentinas
+            ['ACA', 'Air Canada'],
+            ['WJA', 'WestJet'],
+            ['TSC', 'Air Transat'],
+            ['AMX', 'Aeromexico'],
+            ['VOI', 'Volaris'],
+            ['VIV', 'Viva Aerobus'],
+            ['CMP', 'Copa Airlines'],
+            ['AVA', 'Avianca'],
+            ['LAN', 'LATAM Chile'],
+            ['TAM', 'LATAM Brazil'],
+            ['GLO', 'Gol'],
+            ['AZU', 'Azul'],
+            ['ARG', 'Aerolineas Argentinas'],
 
             // --- Europe ---
-            'DLH', // Lufthansa
-            'BAW', // British Airways
-            'AFR', // Air France
-            'KLM', // KLM
-            'SWR', // Swiss
-            'AUA', // Austrian
-            'IBE', // Iberia
-            'TAP', // TAP Portugal
-            'SAS', // Scandinavian
-            'FIN', // Finnair
-            'VIR', // Virgin Atlantic
-            'ITY', // ITA Airways
-            'THY', // Turkish
-            'AEE', // Aegean
-            'LOT', // LOT Polish
-            'CSA', // Czech
-            'EIN', // Aer Lingus
-            'ICE', // Icelandair
-            'BEL', // Brussels
-            'NAX', // Norwegian
+            ['DLH', 'Lufthansa'],
+            ['BAW', 'British Airways'],
+            ['AFR', 'Air France'],
+            ['KLM', 'KLM'],
+            ['SWR', 'Swiss'],
+            ['AUA', 'Austrian Airlines'],
+            ['IBE', 'Iberia'],
+            ['TAP', 'TAP Air Portugal'],
+            ['SAS', 'Scandinavian Airlines'],
+            ['FIN', 'Finnair'],
+            ['VIR', 'Virgin Atlantic'],
+            ['ITY', 'ITA Airways'],
+            ['THY', 'Turkish Airlines'],
+            ['AEE', 'Aegean Airlines'],
+            ['LOT', 'LOT Polish Airlines'],
+            ['CSA', 'Czech Airlines'],
+            ['EIN', 'Aer Lingus'],
+            ['ICE', 'Icelandair'],
+            ['BEL', 'Brussels Airlines'],
+            ['NAX', 'Norwegian'],
 
             // --- Middle East / Africa ---
-            'UAE', // Emirates
-            'QTR', // Qatar
-            'ETD', // Etihad
-            'SVA', // Saudia
-            'MSR', // EgyptAir
-            'RJA', // Royal Jordanian
-            'ELY', // El Al
-            'ETH', // Ethiopian
-            'SAA', // South African
-            'RAM', // Royal Air Maroc
-            'KQA', // Kenya Airways
+            ['UAE', 'Emirates'],
+            ['QTR', 'Qatar Airways'],
+            ['ETD', 'Etihad Airways'],
+            ['SVA', 'Saudia'],
+            ['MSR', 'EgyptAir'],
+            ['RJA', 'Royal Jordanian'],
+            ['ELY', 'El Al'],
+            ['ETH', 'Ethiopian Airlines'],
+            ['SAA', 'South African Airways'],
+            ['RAM', 'Royal Air Maroc'],
+            ['KQA', 'Kenya Airways'],
 
             // --- Asia / Pacific ---
-            'SIA', // Singapore
-            'CPA', // Cathay Pacific
-            'ANA', // All Nippon
-            'JAL', // Japan Airlines
-            'KAL', // Korean Air
-            'AAR', // Asiana
-            'EVA', // EVA Air
-            'CAL', // China Airlines
-            'CCA', // Air China
-            'CES', // China Eastern
-            'CSN', // China Southern
-            'THA', // Thai
-            'MAS', // Malaysia
-            'GIA', // Garuda
-            'PAL', // Philippine
-            'HVN', // Vietnam Airlines
-            'AIC', // Air India
-            'QFA', // Qantas
-            'ANZ', // Air New Zealand
-            'VOZ', // Virgin Australia
-            'FJI', // Fiji Airways
+            ['SIA', 'Singapore Airlines'],
+            ['CPA', 'Cathay Pacific'],
+            ['ANA', 'All Nippon Airways'],
+            ['JAL', 'Japan Airlines'],
+            ['KAL', 'Korean Air'],
+            ['AAR', 'Asiana Airlines'],
+            ['EVA', 'EVA Air'],
+            ['CAL', 'China Airlines'],
+            ['CCA', 'Air China'],
+            ['CES', 'China Eastern'],
+            ['CSN', 'China Southern'],
+            ['THA', 'Thai Airways'],
+            ['MAS', 'Malaysia Airlines'],
+            ['GIA', 'Garuda Indonesia'],
+            ['PAL', 'Philippine Airlines'],
+            ['HVN', 'Vietnam Airlines'],
+            ['AIC', 'Air India'],
+            ['QFA', 'Qantas'],
+            ['ANZ', 'Air New Zealand'],
+            ['VOZ', 'Virgin Australia'],
+            ['FJI', 'Fiji Airways'],
         ]);
 
         // Altitude floor, metres. This is deliberately low: under an approach corridor
@@ -1262,12 +1267,11 @@
         }
 
         // Get route information from various APIs
-        // Airlines reuse one flight number for several legs in a day, and the callsign
-        // databases map a callsign to a single canonical route with no notion of which
-        // leg is currently airborne. So a plane overhead can come back tagged with a
-        // route on the far side of the country. A plane actually flying a route sits
-        // near the line between its endpoints, so reject the route when the detour
-        // through the plane's position is implausibly long.
+        // Airlines reuse one flight number for several legs in a day. vrs-standing-data
+        // lists every leg, but it still doesn't say which one is airborne right now, and
+        // some files are stale. A plane actually flying a leg sits near the line between
+        // that leg's endpoints, so we accept the leg whose corridor contains the plane
+        // and reject the route outright when none of its legs do.
         const EARTH_RADIUS_KM = 6371;
 
         // How far off its own route a flight may be and still be believed. Measured
@@ -1287,12 +1291,14 @@
             return m === 0 ? v : [v[0] / m, v[1] / m, v[2] / m];
         }
 
-        function routeMatchesPosition(plane, origin, destination) {
-            if (!origin?.latitude || !destination?.latitude) return true; // can't check
-            if (plane.latitude == null || plane.longitude == null) return true;
+        // Airports from vrs-standing-data carry `.lat`/`.lon`. Given a plane and one
+        // leg (origin -> destination), decide whether the plane is plausibly on it.
+        function legMatchesPosition(plane, origin, destination) {
+            if (origin?.lat == null || destination?.lat == null) return false; // can't check
+            if (plane.latitude == null || plane.longitude == null) return false;
 
-            const o = geoVector(origin.latitude, origin.longitude);
-            const d = geoVector(destination.latitude, destination.longitude);
+            const o = geoVector(origin.lat, origin.lon);
+            const d = geoVector(destination.lat, destination.lon);
             const p = geoVector(plane.latitude, plane.longitude);
             const clamp = x => Math.max(-1, Math.min(1, x));
 
@@ -1326,13 +1332,26 @@
             return along > -ROUTE_CORRIDOR_KM && along < segment + ROUTE_CORRIDOR_KM;
         }
 
+        // A route may be multi-leg (e.g. ORD-LAX-ORD lands as three stops). Return the
+        // consecutive pair whose corridor the plane sits in -- the leg it is actually
+        // flying -- or null when the plane matches none of them, which means the route
+        // on file contradicts where the aircraft is.
+        function currentLeg(plane, stops) {
+            for (let i = 0; i < stops.length - 1; i++) {
+                if (legMatchesPosition(plane, stops[i], stops[i + 1])) {
+                    return [stops[i], stops[i + 1]];
+                }
+            }
+            return null;
+        }
+
         async function getRouteInfo(plane) {
             const callsign = plane.callsign;
             const icao24 = plane.icao24;
             const info = { source: [] };
 
-            // hexdb gives the airframe; adsbdb gives the route. They answer different
-            // questions, so query both rather than treating one as the other's fallback.
+            // hexdb gives the airframe; vrs-standing-data gives the route. They answer
+            // different questions, so query both rather than treating one as a fallback.
             try {
                 const response = await fetch(`https://hexdb.io/api/v1/aircraft/${icao24}`);
                 if (response.ok) {
@@ -1353,28 +1372,38 @@
             }
 
             if (callsign && callsign !== 'N/A') {
+                const cs = callsign.trim();
                 try {
+                    // vrs-standing-data serves one file per callsign, sharded by the
+                    // first two characters. Unlike adsbdb -- which maps a callsign to a
+                    // single canonical origin/destination and so mislabels every leg but
+                    // one -- this encodes the full multi-leg route (ORD-LAX-ORD lands as
+                    // three stops), so we can pick the leg the aircraft is actually on
+                    // instead of rejecting the whole route when the far endpoint is off.
                     const response = await fetch(
-                        `https://api.adsbdb.com/v0/callsign/${callsign.trim()}`);
+                        `https://vrs-standing-data.adsb.lol/routes/${cs.slice(0, 2)}/${cs}.json`);
                     if (response.ok) {
-                        const data = await response.json();
-                        const route = data?.response?.flightroute;
-                        if (route && routeMatchesPosition(plane, route.origin, route.destination)) {
-                            info.airline = route.airline?.name;
-                            info.origin = route.origin?.name || route.origin?.iata_code;
-                            info.originCity = route.origin?.municipality;
-                            info.destination = route.destination?.name || route.destination?.iata_code;
-                            info.destinationCity = route.destination?.municipality;
-                            info.flightNumber = route.callsign_iata || callsign;
-                            info.source.push('adsbdb');
-                        } else if (route) {
+                        const route = await response.json();
+                        const leg = currentLeg(plane, route._airports || []);
+                        if (leg) {
+                            const [origin, destination] = leg;
+                            // The route names the operating carrier as an ICAO code only;
+                            // CARRIERS turns it into a friendly name, falling back to the
+                            // code itself for anything not in the allowlist.
+                            info.airline = CARRIERS.get(route.airline_code) || route.airline_code;
+                            info.origin = origin.name || origin.iata;
+                            info.originCity = origin.location;
+                            info.destination = destination.name || destination.iata;
+                            info.destinationCity = destination.location;
+                            info.source.push('vrs');
+                        } else if ((route._airports || []).length >= 2) {
                             console.log(
-                                `Rejected route for ${callsign}: ${route.origin?.iata_code}->` +
-                                `${route.destination?.iata_code} is inconsistent with position`);
+                                `Rejected route for ${cs}: ${route.airport_codes} ` +
+                                `is inconsistent with position`);
                         }
                     }
                 } catch (error) {
-                    console.log('adsbdb.com lookup failed:', error);
+                    console.log('vrs-standing-data lookup failed:', error);
                 }
             }
 
