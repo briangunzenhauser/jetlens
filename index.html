@@ -378,9 +378,10 @@
             font-size: 26px;
             font-weight: 600;
             line-height: 1.35;
-            color: #FFFFFF;
+            /* Same midnight as the start-screen wordmark; the shared sky gradient
+               keeps it at or above 7:1 contrast, so no halo is needed. */
+            color: var(--midnight);
             max-width: 460px;
-            text-shadow: 0 2px 18px rgba(6, 84, 148, 0.45);
         }
 
         @media (prefers-reduced-motion: reduce) {
@@ -435,7 +436,7 @@
     </div>
 
     <div id="intro" aria-hidden="true">
-        <div id="intro-text">Point your phone towards a plane to start tracking</div>
+        <div id="intro-text">Point your phone to the sky to start flight tracking</div>
     </div>
 
     <video id="video" autoplay playsinline></video>
@@ -729,13 +730,23 @@
                 if (typeof DeviceOrientationEvent !== 'undefined' && 
                     typeof DeviceOrientationEvent.requestPermission === 'function') {
                     loadingText.textContent = 'Requesting motion sensors...';
+                    let permission;
                     try {
-                        const permission = await DeviceOrientationEvent.requestPermission();
-                        if (permission !== 'granted') {
-                            throw new Error('Motion sensor permission denied. Please allow access to device orientation.');
-                        }
+                        permission = await DeviceOrientationEvent.requestPermission();
                     } catch (error) {
-                        throw new Error('Motion sensor permission required. ' + error.message);
+                        // Rejects only when the call wasn't tied to a tap or the page
+                        // isn't a secure context -- neither of which "Try Again" fixes.
+                        throw new Error(
+                            'Could not request motion access (' + error.message + '). ' +
+                            'Open this page over https and tap Start.');
+                    }
+                    if (permission !== 'granted') {
+                        // iOS remembers this "no" and won't prompt again, so re-tapping
+                        // Start can't undo it -- the site permission has to be reset.
+                        throw new Error(
+                            'Motion access is off for this site. Tap the "aA" (or page-settings) ' +
+                            'icon in Safari’s address bar → Motion & Orientation Access → ' +
+                            'Allow, then reload.');
                     }
                 }
 
@@ -772,7 +783,7 @@
 
                 // Start fetching plane data
                 fetchPlanes();
-                setInterval(fetchPlanes, 10000); // Update every 10 seconds
+                setInterval(fetchPlanes, 5000); // Poll every 5s; positions are dead-reckoned between polls
                 setInterval(updateMarkers, 100); // Update marker positions frequently
 
             } catch (error) {
@@ -899,7 +910,10 @@
                             velocity: typeof ac.gs === 'number' ? ac.gs / KT_PER_MS : null,
                             true_track: heading,
                             vertical_rate: rate === null ? null : rate / FTMIN_PER_MS,
-                            on_ground: onGround
+                            on_ground: onGround,
+                            // When this fix was received, so markers can be dead-reckoned
+                            // forward between polls instead of freezing. See extrapolatePlane.
+                            fetchedAt: Date.now()
                         };
                     }).filter(plane =>
                         plane.latitude &&
@@ -1133,25 +1147,58 @@
             };
         }
 
+        // How far past its last fix a plane may be dead-reckoned. Positions come in
+        // every few seconds; between them a fast, low, overhead plane would otherwise
+        // freeze and then lurch. Advancing it along its own track keeps the marker
+        // moving. Capped so that if fetches stall the marker settles rather than
+        // sailing off on a stale velocity.
+        const MAX_EXTRAPOLATION_S = 15;
+        const EARTH_RADIUS_M = 6371000;
+
+        // Last known position advanced forward to `now` along the plane's ground track.
+        // Straight-line only: valid for the handful of seconds we hold a fix, with
+        // turns and altitude changes corrected at the next poll.
+        function extrapolatePlane(plane, now) {
+            let dt = (now - plane.fetchedAt) / 1000; // seconds since the fix
+            if (!plane.velocity || plane.true_track == null || !(dt > 0)) {
+                return { lat: plane.latitude, lon: plane.longitude, alt: plane.baro_altitude || 0 };
+            }
+            dt = Math.min(dt, MAX_EXTRAPOLATION_S);
+
+            const distM = plane.velocity * dt;
+            const track = plane.true_track * Math.PI / 180;
+            const latRad = plane.latitude * Math.PI / 180;
+
+            const dLat = (distM * Math.cos(track) / EARTH_RADIUS_M) * 180 / Math.PI;
+            const dLon = (distM * Math.sin(track) / (EARTH_RADIUS_M * Math.cos(latRad))) * 180 / Math.PI;
+            const alt = (plane.baro_altitude || 0) + (plane.vertical_rate ? plane.vertical_rate * dt : 0);
+
+            return { lat: plane.latitude + dLat, lon: plane.longitude + dLon, alt };
+        }
+
         // Update plane markers on screen
         function updateMarkers() {
             if (!userLocation || planes.length === 0) return;
+
+            const now = Date.now();
 
             // Track which markers are still visible
             const visibleMarkers = new Set();
 
             planes.forEach(plane => {
+                const pos = extrapolatePlane(plane, now);
+
                 const bearing = calculateBearing(
                     userLocation.lat, userLocation.lon,
-                    plane.latitude, plane.longitude
+                    pos.lat, pos.lon
                 );
 
                 const distance = calculateDistance(
                     userLocation.lat, userLocation.lon,
-                    plane.latitude, plane.longitude
+                    pos.lat, pos.lon
                 );
 
-                const elevation = calculateElevation(distance, plane.baro_altitude || 0);
+                const elevation = calculateElevation(distance, pos.alt);
 
                 // Filter criteria:
                 // 1. Distance: an airliner at cruise is routinely visible 50-100km out,
@@ -1290,9 +1337,14 @@
                 const response = await fetch(`https://hexdb.io/api/v1/aircraft/${icao24}`);
                 if (response.ok) {
                     const data = await response.json();
-                    if (data && data.aircraft) {
-                        info.registration = data.aircraft.registration;
-                        info.type = data.aircraft.type;
+                    // hexdb returns a flat object with capitalised keys, e.g.
+                    // { Registration, Type, ICAOTypeCode, RegisteredOwners, ... }.
+                    // It has no nested `aircraft`, so the old shape never matched and
+                    // this source silently contributed nothing.
+                    if (data && (data.Registration || data.Type)) {
+                        info.registration = data.Registration;
+                        info.type = data.Type;
+                        info.owner = data.RegisteredOwners;
                         info.source.push('hexdb');
                     }
                 }
@@ -1372,9 +1424,11 @@
             if (selectedPlane !== plane) return;
 
             if (routeInfo) {
-                // Update with route information
-                if (routeInfo.airline) {
-                    document.getElementById('airline-name').textContent = routeInfo.airline;
+                // Update with route information. Prefer the operating airline from the
+                // route; fall back to the airframe's registered owner from hexdb.
+                if (routeInfo.airline || routeInfo.owner) {
+                    document.getElementById('airline-name').textContent =
+                        routeInfo.airline || routeInfo.owner;
                 }
                 
                 if (routeInfo.flightNumber) {
