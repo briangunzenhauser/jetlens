@@ -257,10 +257,22 @@
             left: 0;
             width: 100vw;
             height: 100vh;
+            /* Dynamic viewport height so the lower group is never stranded behind
+               iOS Safari's toolbar -- the cause of the wordmark reading as too low on
+               short screens like the iPhone mini. Falls back to 100vh where unsupported. */
+            height: 100dvh;
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
+            /* Two groups: the wordmark up top, the button and its note down low. Equal
+               top/bottom padding is what balances them -- the space above the wordmark
+               matches the space below the button -- and each side grows to clear the
+               notch / home indicator. */
+            justify-content: space-between;
+            box-sizing: border-box;
+            padding: clamp(48px, 11vh, 120px) 24px;
+            padding-top: max(clamp(48px, 11vh, 120px), env(safe-area-inset-top));
+            padding-bottom: max(clamp(48px, 11vh, 120px), env(safe-area-inset-bottom));
             z-index: 1000;
 
             /* Larger than the viewport so the drift animation has somewhere to slide
@@ -269,6 +281,20 @@
             background: var(--sky-gradient);
             background-size: 280% 280%;
             animation: sky-drift 26s ease-in-out infinite;
+        }
+
+        /* Each group stacks and centers its own contents; #loading positions the two. */
+        .brand-group,
+        .start-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* Only two of these show at once -- spinner + status while loading, or button +
+           note once ready -- so a single gap spaces whichever pair is visible. */
+        .start-group {
+            gap: 16px;
         }
 
         /* Slow enough to read as light changing rather than as motion. */
@@ -310,8 +336,6 @@
         .spinner {
             width: 40px;
             height: 40px;
-            margin-top: 44px;
-            margin-bottom: 18px;
             border: 3px solid rgba(11, 44, 77, 0.15);
             border-top-color: var(--midnight);
             border-radius: 50%;
@@ -330,7 +354,6 @@
         }
 
         #start-btn {
-            margin-top: 46px;
             padding: 16px 38px;
             background: var(--midnight);
             color: #FFFFFF;
@@ -355,7 +378,6 @@
         }
 
         #permission-note {
-            margin-top: 18px;
             max-width: 300px;
             padding: 0 24px;
             text-align: center;
@@ -446,14 +468,18 @@
 </head>
 <body>
     <div id="loading">
-        <h1 id="brand">JetLens</h1>
-        <p id="tagline">AR Flight Tracking</p>
-        <div class="spinner"></div>
-        <div id="loading-text">Initializing camera and sensors...</div>
-        <button id="start-btn" style="display: none;">Start JetLens</button>
-        <p id="permission-note" style="display: none;">
-            JetLens needs access to your camera and location to work properly.
-        </p>
+        <div class="brand-group">
+            <h1 id="brand">JetLens</h1>
+            <p id="tagline">AR Flight Tracking</p>
+        </div>
+        <div class="start-group">
+            <div class="spinner"></div>
+            <div id="loading-text">Initializing camera and sensors...</div>
+            <button id="start-btn" style="display: none;">Start JetLens</button>
+            <p id="permission-note" style="display: none;">
+                JetLens needs access to your camera and location to work properly.
+            </p>
+        </div>
     </div>
 
     <div id="intro" aria-hidden="true">
