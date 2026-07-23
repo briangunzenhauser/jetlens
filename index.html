@@ -118,6 +118,27 @@
             color: #fff;
         }
 
+        /* Origin/destination stack the airport name over its city, region and country.
+           Right-aligned to line up with the other values, and given a little left
+           padding so a long airport name wraps clear of the label. */
+        .location-value {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            padding-left: 24px;
+        }
+
+        .location-sub {
+            margin-top: 3px;
+            font-weight: 400;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.55);
+        }
+
+        .location-sub:empty {
+            display: none;
+        }
+
         #close-btn {
             position: absolute;
             top: 24px;
@@ -467,11 +488,17 @@
         <div class="airline" id="airline-name">-</div>
         <div class="info-row">
             <span class="info-label">Origin</span>
-            <span class="info-value" id="origin">-</span>
+            <span class="info-value location-value">
+                <span id="origin">-</span>
+                <small class="location-sub" id="origin-sub"></small>
+            </span>
         </div>
         <div class="info-row">
             <span class="info-label">Destination</span>
-            <span class="info-value" id="destination">-</span>
+            <span class="info-value location-value">
+                <span id="destination">-</span>
+                <small class="location-sub" id="destination-sub"></small>
+            </span>
         </div>
         <div class="info-row">
             <span class="info-label">Altitude</span>
@@ -1392,9 +1419,16 @@
                             // code itself for anything not in the allowlist.
                             info.airline = CARRIERS.get(route.airline_code) || route.airline_code;
                             info.origin = origin.name || origin.iata;
-                            info.originCity = origin.location;
                             info.destination = destination.name || destination.iata;
-                            info.destinationCity = destination.location;
+                            // The route file names the city and country but not the
+                            // state/region, so pull that from hexdb (cached) and stitch
+                            // the three together for the small line under each airport.
+                            const [originRegion, destRegion] = await Promise.all([
+                                getAirportRegion(origin.icao),
+                                getAirportRegion(destination.icao),
+                            ]);
+                            info.originSub = subLocation(origin, originRegion);
+                            info.destinationSub = subLocation(destination, destRegion);
                             info.source.push('vrs');
                         } else if ((route._airports || []).length >= 2) {
                             console.log(
@@ -1410,19 +1444,48 @@
             return info.source.length ? info : null;
         }
 
-        // Format airport name for display
-        function formatAirport(airportData, city) {
-            if (!airportData) return 'Unknown';
-            
-            if (typeof airportData === 'string') {
-                return airportData;
+        // ISO 3166 country code -> English country name ("US" -> "United States").
+        // Built into the browser, so no bundled country table. Null on the rare engine
+        // without it, in which case we fall back to showing the code.
+        const REGION_NAMES = (() => {
+            try { return new Intl.DisplayNames(['en'], { type: 'region' }); }
+            catch { return null; }
+        })();
+
+        // hexdb's airport endpoint carries the state/region the route file omits. Cache
+        // by ICAO across selections (airports repeat constantly) and cache misses too,
+        // so a lookup that comes back empty is not retried on every tap.
+        const airportRegions = new Map();
+        async function getAirportRegion(icao) {
+            if (!icao) return null;
+            if (airportRegions.has(icao)) return airportRegions.get(icao);
+            let region = null;
+            try {
+                const response = await fetch(`https://hexdb.io/api/v1/airport/icao/${icao}`);
+                if (response.ok) {
+                    region = (await response.json()).region_name || null;
+                }
+            } catch (error) {
+                console.log('hexdb airport lookup failed:', error);
             }
-            
-            if (city) {
-                return `${airportData} (${city})`;
-            }
-            
-            return airportData;
+            airportRegions.set(icao, region);
+            return region;
+        }
+
+        // "Los Angeles, California, United States" -- dropping any piece we lack rather
+        // than leaving a stray comma.
+        function subLocation(airport, region) {
+            const country = airport.countryiso2 && REGION_NAMES
+                ? REGION_NAMES.of(airport.countryiso2)
+                : airport.countryiso2;
+            return [airport.location, region, country].filter(Boolean).join(', ');
+        }
+
+        // Set an origin/destination row: the airport name, and the small city/region/
+        // country line beneath it. An empty sub line collapses via CSS.
+        function setLocation(id, name, sub) {
+            document.getElementById(id).textContent = name || 'Unavailable';
+            document.getElementById(id + '-sub').textContent = (name && sub) ? sub : '';
         }
 
         // Show detailed plane information
@@ -1439,8 +1502,8 @@
             const speedKnots = plane.velocity ? Math.round(plane.velocity * 1.94384) : 0;
             document.getElementById('speed').textContent = `${speedKnots} knots`;
             
-            document.getElementById('origin').textContent = 'Loading...';
-            document.getElementById('destination').textContent = 'Loading...';
+            setLocation('origin', 'Loading...', '');
+            setLocation('destination', 'Loading...', '');
             document.getElementById('aircraft-type').textContent = plane.icao24.toUpperCase();
             
             infoPanel.classList.add('active');
@@ -1467,28 +1530,18 @@
                 // 'Unavailable' rather than 'Unknown': the usual reason to land here is
                 // that a route came back and was rejected as inconsistent with where
                 // the plane actually is, so we are withholding an answer rather than
-                // failing to find one.
-                if (routeInfo.origin) {
-                    document.getElementById('origin').textContent =
-                        formatAirport(routeInfo.origin, routeInfo.originCity);
-                } else {
-                    document.getElementById('origin').textContent = 'Unavailable';
-                }
+                // failing to find one. setLocation renders 'Unavailable' for a missing
+                // name and hides the sub line.
+                setLocation('origin', routeInfo.origin, routeInfo.originSub);
+                setLocation('destination', routeInfo.destination, routeInfo.destinationSub);
 
-                if (routeInfo.destination) {
-                    document.getElementById('destination').textContent =
-                        formatAirport(routeInfo.destination, routeInfo.destinationCity);
-                } else {
-                    document.getElementById('destination').textContent = 'Unavailable';
-                }
-                
                 if (routeInfo.type) {
                     document.getElementById('aircraft-type').textContent = routeInfo.type;
                 }
             } else {
                 // No route data found
-                document.getElementById('origin').textContent = 'Data not available';
-                document.getElementById('destination').textContent = 'Data not available';
+                setLocation('origin', 'Data not available', '');
+                setLocation('destination', 'Data not available', '');
             }
         }
 
