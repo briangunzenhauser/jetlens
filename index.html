@@ -742,11 +742,11 @@
                     }
                     if (permission !== 'granted') {
                         // iOS remembers this "no" and won't prompt again, so re-tapping
-                        // Start can't undo it -- the site permission has to be reset.
+                        // Start can't undo it. The control is global, not per-page:
+                        // Settings has to be changed (or the origin changed) to re-prompt.
                         throw new Error(
-                            'Motion access is off for this site. Tap the "aA" (or page-settings) ' +
-                            'icon in Safari’s address bar → Motion & Orientation Access → ' +
-                            'Allow, then reload.');
+                            'Motion access is blocked. In the Settings app: Safari → ' +
+                            'Motion & Orientation Access → turn on, then reload this page.');
                     }
                 }
 
