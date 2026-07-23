@@ -153,9 +153,38 @@
             backdrop-filter: blur(10px);
         }
 
-        #debug {
+        /* The heading the phone is facing, in plain compass terms. This is the only
+           orientation readout end users see; the raw sensor panel below is dev-only. */
+        #heading-pill {
             position: fixed;
             bottom: 20px;
+            left: 20px;
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 10px 16px;
+            border-radius: 999px;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+            color: #FFFFFF;
+        }
+        #heading-pill .heading-label {
+            font-size: 11px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            opacity: 0.7;
+        }
+        #heading-pill #heading-dir {
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+        }
+
+        /* Raw sensor readout, testing only. Hidden unless the URL carries ?debug. */
+        #debug {
+            position: fixed;
+            bottom: 74px;
             left: 20px;
             background: rgba(0, 0, 0, 0.85);
             padding: 12px 16px;
@@ -166,6 +195,7 @@
             font-family: monospace;
             max-width: 300px;
         }
+        #debug[hidden] { display: none; }
 
         :root {
             /* Brilliant daytime-sky blues. Deliberately warmer and more cyan than
@@ -183,6 +213,21 @@
                unrelated blues. Dark enough for 7:1 contrast anywhere in the gradient. */
             --midnight: #0B2C4D;
             --midnight-soft: #12406B;
+
+            /* The one sky wash, shared by the start screen and the intro overlay so
+               the two read as the same place. Oversized via background-size on each
+               user, then drifted by the sky-drift animation. Stops stay at or above
+               --sky-300 so midnight type keeps its contrast wherever the wash sits. */
+            --sky-gradient: linear-gradient(
+                125deg,
+                #FFFFFF 0%,
+                var(--sky-100) 18%,
+                var(--sky-200) 38%,
+                var(--sky-300) 52%,
+                var(--sky-200) 66%,
+                var(--sky-100) 84%,
+                #FFFFFF 100%
+            );
         }
 
         #loading {
@@ -197,22 +242,10 @@
             justify-content: center;
             z-index: 1000;
 
-            /* Sky washing through white, drawn from the same --sky-* palette as the
-               intro card so the two screens read as one place. Oversized so there is
-               somewhere to drift to -- the gradient is larger than the viewport and
-               the animation slides it, which costs nothing to composite and never
-               repaints. Stops stay at or above --sky-300 so the midnight wordmark
-               keeps its contrast wherever the gradient happens to sit. */
-            background: linear-gradient(
-                125deg,
-                #FFFFFF 0%,
-                var(--sky-100) 18%,
-                var(--sky-200) 38%,
-                var(--sky-300) 52%,
-                var(--sky-200) 66%,
-                var(--sky-100) 84%,
-                #FFFFFF 100%
-            );
+            /* Larger than the viewport so the drift animation has somewhere to slide
+               to -- it moves background-position only, which composites for free and
+               never repaints. */
+            background: var(--sky-gradient);
             background-size: 280% 280%;
             animation: sky-drift 26s ease-in-out infinite;
         }
@@ -225,7 +258,7 @@
         }
 
         @media (prefers-reduced-motion: reduce) {
-            #loading { animation: none; }
+            #loading, #intro { animation: none; }
         }
 
         #loading.hidden {
@@ -324,13 +357,11 @@
             pointer-events: none;
             opacity: 0;
             transition: opacity 600ms ease;
-            background: linear-gradient(
-                180deg,
-                var(--sky-700) 0%,
-                var(--sky-500) 38%,
-                var(--sky-200) 76%,
-                #FFFFFF 100%
-            );
+            /* Same wash as the start screen so crossing from one to the other reads
+               as the light changing, not as a different screen. */
+            background: var(--sky-gradient);
+            background-size: 280% 280%;
+            animation: sky-drift 26s ease-in-out infinite;
         }
 
         #intro.visible {
@@ -416,7 +447,12 @@
         <div id="plane-count">✈️ Searching for planes...</div>
     </div>
 
-    <div id="debug">
+    <div id="heading-pill">
+        <span class="heading-label">Facing</span>
+        <span id="heading-dir">—</span>
+    </div>
+
+    <div id="debug" hidden>
         <div>Alpha: <span id="debug-alpha">0</span>°</div>
         <div>Beta: <span id="debug-beta">0</span>°</div>
         <div>Gamma: <span id="debug-gamma">0</span>°</div>
@@ -637,6 +673,11 @@
 
         // Show start button on page load
         window.addEventListener('load', () => {
+            // Raw sensor panel is opt-in for testing: append ?debug to the URL.
+            if (new URLSearchParams(location.search).has('debug')) {
+                document.getElementById('debug').hidden = false;
+            }
+
             if (previewMode === 'intro') {
                 loading.classList.add('hidden');
                 intro.style.display = 'flex';
@@ -788,11 +829,28 @@
                 compassHeading = null;
             }
 
-            // Update debug display
+            // Update the on-screen readouts
+            updateHeadingDisplay();
             updateDebugDisplay();
         }
 
-        // Update debug display
+        // The 16-point compass, indexed by (heading / 22.5) rounded.
+        const COMPASS_POINTS = [
+            'N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE',
+            'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'
+        ];
+
+        function bearingToCompass(deg) {
+            return COMPASS_POINTS[Math.round(deg / 22.5) % 16];
+        }
+
+        // The one orientation readout end users see: which way they're facing.
+        function updateHeadingDisplay() {
+            document.getElementById('heading-dir').textContent =
+                compassHeading === null ? '—' : bearingToCompass(compassHeading);
+        }
+
+        // Raw sensor values, shown only in debug mode (see ?debug at startup).
         function updateDebugDisplay() {
             document.getElementById('debug-alpha').textContent =
                 deviceOrientation.alpha.toFixed(1) +
