@@ -299,6 +299,60 @@
             gap: 16px;
         }
 
+        /* Two little planes cross the start screen on load: one above the wordmark
+           soon after opening, then one through the middle gap five seconds later.
+           Absolutely positioned so they stay out of the flex layout, and small so
+           they read as high in the sky. Each starts off-screen left and its own
+           animation-delay times the two passes. */
+        .sky-plane {
+            position: absolute;
+            top: 8%;
+            left: 0;
+            display: flex;
+            align-items: center;
+            pointer-events: none;
+            transform: translateX(-30vw);
+            animation: plane-fly 10s linear 1.5s forwards;
+        }
+        /* The middle pass comes back the other way: mirrored (nose left) and flown
+           right-to-left. The flip is carried in the keyframe so it composes with
+           the moving translateX. */
+        .sky-plane--mid {
+            top: 47%;
+            animation-name: plane-fly-rev;
+            animation-delay: 12s;
+        }
+        /* Trails from an engine: white where it meets the plane, fading to nothing
+           behind it. Nudged down a touch so it reads as engine exhaust, not the
+           tail. */
+        .sky-plane .contrail {
+            width: 84px;
+            height: 2px;
+            border-radius: 2px;
+            transform: translateY(2px);
+            background: linear-gradient(to right,
+                rgba(255, 255, 255, 0) 0%,
+                rgba(255, 255, 255, 0.85) 100%);
+        }
+        .sky-plane svg {
+            width: 31px;
+            height: auto;
+            display: block;
+            margin-left: -1px; /* close the seam between contrail and tail */
+        }
+        .sky-plane svg path {
+            fill: var(--midnight);
+        }
+
+        @keyframes plane-fly {
+            from { transform: translateX(-30vw); }
+            to   { transform: translateX(130vw); }
+        }
+        @keyframes plane-fly-rev {
+            from { transform: translateX(130vw) scaleX(-1); }
+            to   { transform: translateX(-30vw) scaleX(-1); }
+        }
+
         /* Slow enough to read as light changing rather than as motion. */
         @keyframes sky-drift {
             0%   { background-position:   0% 50%; }
@@ -308,6 +362,7 @@
 
         @media (prefers-reduced-motion: reduce) {
             #loading, #intro { animation: none; }
+            .sky-plane { display: none; }
         }
 
         #loading.hidden {
@@ -470,6 +525,17 @@
 </head>
 <body>
     <div id="loading">
+        <!-- Two decorative fly-bys on load: one above the wordmark, one through the
+             middle gap 5s later. Plane derived from Material Symbols "flight_takeoff"
+             (Apache 2.0), wing and runway removed and levelled -- see refs/plane.svg. -->
+        <div class="sky-plane" aria-hidden="true">
+            <span class="contrail"></span>
+            <svg viewBox="0 0 824 257" width="824" height="257"><path d="M79.9 236.9L20 20L83 24.5L134.6 102.5L333.5 101.9L530.5 100.9L737.6 100.5Q770.9 100.1 790.5 127.1Q810.2 154.1 801.2 187.9Q795.5 209.2 778 222.1Q760.6 235 738.8 235.4L79.9 236.9Z"/></svg>
+        </div>
+        <div class="sky-plane sky-plane--mid" aria-hidden="true">
+            <span class="contrail"></span>
+            <svg viewBox="0 0 824 257" width="824" height="257"><path d="M79.9 236.9L20 20L83 24.5L134.6 102.5L333.5 101.9L530.5 100.9L737.6 100.5Q770.9 100.1 790.5 127.1Q810.2 154.1 801.2 187.9Q795.5 209.2 778 222.1Q760.6 235 738.8 235.4L79.9 236.9Z"/></svg>
+        </div>
         <div class="brand-group">
             <h1 id="brand">JetLens</h1>
             <p id="tagline">AR Flight Tracking</p>
