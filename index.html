@@ -311,7 +311,10 @@
             display: flex;
             align-items: center;
             pointer-events: none;
-            transform: translateX(-30vw);
+            /* Offset by the element's own width (plus a margin) rather than a vw
+               percentage, so it is fully off-screen on narrow phones too -- a vw
+               start left a sliver visible on an iPhone mini. */
+            transform: translateX(calc(-100% - 20px));
             animation: plane-fly 10s linear 1.5s forwards;
         }
         /* The middle pass comes back the other way: mirrored (nose left) and flown
@@ -335,7 +338,7 @@
                 rgba(255, 255, 255, 0.85) 100%);
         }
         .sky-plane svg {
-            width: 31px;
+            width: 28px;
             height: auto;
             display: block;
             margin-left: -1px; /* close the seam between contrail and tail */
@@ -345,12 +348,12 @@
         }
 
         @keyframes plane-fly {
-            from { transform: translateX(-30vw); }
-            to   { transform: translateX(130vw); }
+            from { transform: translateX(calc(-100% - 20px)); }
+            to   { transform: translateX(calc(100vw + 20px)); }
         }
         @keyframes plane-fly-rev {
-            from { transform: translateX(130vw) scaleX(-1); }
-            to   { transform: translateX(-30vw) scaleX(-1); }
+            from { transform: translateX(calc(100vw + 20px)) scaleX(-1); }
+            to   { transform: translateX(calc(-100% - 20px)) scaleX(-1); }
         }
 
         /* Slow enough to read as light changing rather than as motion. */
