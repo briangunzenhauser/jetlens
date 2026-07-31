@@ -7,6 +7,11 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;800&display=swap" rel="stylesheet">
+    <!-- Umami (cookieless, no consent banner needed). data-domains keeps local dev
+         and any fork off the dashboard -- events only send from the live host. -->
+    <script defer src="https://cloud.umami.is/script.js"
+            data-website-id="500575f5-2b2b-402b-a51d-4327459c82c9"
+            data-domains="jetlens.netlify.app"></script>
     <style>
         * {
             margin: 0;
@@ -825,6 +830,34 @@
 
         // The intro card is a read-once message, so hold it long enough to actually
         // read: ~200 words/min over its length, plus a beat to notice it and focus.
+        // Analytics. Fire-and-forget by design: the script is deferred and is
+        // routinely blocked outright by content blockers, so umami may never exist.
+        // Every call goes through here, nothing awaits it, and a failure inside it
+        // must never take the camera path down with it.
+        function track(event, data) {
+            try {
+                window.umami?.track(event, data);
+            } catch (e) {
+                // Swallowed deliberately -- analytics is never worth an exception.
+            }
+        }
+
+        // Both of these fire on a 5s poll, so they are reported once per session
+        // rather than per poll. A sustained API outage would otherwise burn ~720
+        // events an hour and tell us nothing the first report didn't.
+        let trackedFirstFetch = false;
+        let trackedFetchError = false;
+
+        // Permission failures surface differently by API: DOMException carries a
+        // useful `name` (NotAllowedError vs NotFoundError), while
+        // GeolocationPositionError has only a numeric `code` (1 denied, 2
+        // unavailable, 3 timeout). Normalize so the dashboard shows one field.
+        function errorReason(error) {
+            if (error.name) return error.name;
+            if (error.code !== undefined) return `geo-code-${error.code}`;
+            return 'Error';
+        }
+
         function showIntro() {
             const words = introText.textContent.trim().split(/\s+/).length;
             const readMs = (words / 200) * 60 * 1000;
@@ -847,7 +880,16 @@
 
         // Initialize the app
         async function init() {
+            // The button is relabelled 'Try Again' by the catch below, so this
+            // separates first attempts from retries in the funnel -- a retry that
+            // never succeeds is the signal worth seeing.
+            const retry = startBtn.textContent === 'Try Again';
+            // Tracks how far init got, so a failure reports which permission gate
+            // it died at rather than just that it died.
+            let stage = 'motion';
             try {
+                track('start-tapped', { retry });
+
                 // Hide start button, show spinner and the progress/error line
                 startBtn.style.display = 'none';
                 permissionNote.style.display = 'none';
@@ -877,6 +919,9 @@
                             'Motion access is blocked. In the Settings app: Safari → ' +
                             'Motion & Orientation Access → turn on, then reload this page.');
                     }
+                    // Only meaningful on iOS -- Android never prompts, so the absence
+                    // of this event alongside camera-granted identifies the platform.
+                    track('motion-granted');
                 }
 
                 // Start orientation tracking. Prefer the absolute event where it
@@ -891,6 +936,7 @@
                 }
 
                 // Request camera access
+                stage = 'camera';
                 loadingText.textContent = 'Requesting camera access...';
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: {
@@ -900,10 +946,13 @@
                     }
                 });
                 video.srcObject = stream;
+                track('camera-granted');
 
                 // Get user location
+                stage = 'location';
                 loadingText.textContent = 'Getting your location...';
                 userLocation = await getUserLocation();
+                track('location-granted');
                 updateStatus();
 
                 // Hide loading screen and hand off to the intro card
@@ -915,7 +964,18 @@
                 setInterval(fetchPlanes, 5000); // Poll every 5s; positions are dead-reckoned between polls
                 setInterval(updateMarkers, 100); // Update marker positions frequently
 
+                // Every permission cleared and the camera is live. This is the
+                // denominator for everything else in the funnel.
+                track('session-started');
+
             } catch (error) {
+                track('init-failed', {
+                    stage,
+                    reason: errorReason(error),
+                    // Truncated -- some browsers return long prose here and the
+                    // reason field is what actually gets grouped on.
+                    message: String(error.message || '').slice(0, 100)
+                });
                 loadingText.textContent = `Error: ${error.message}`;
                 console.error('Initialization error:', error);
                 // Show start button again to let user retry
@@ -1055,10 +1115,27 @@
                     planeCountEl.textContent = compassHeading === null
                         ? `✈️ ${planes.length} planes — no compass signal`
                         : `✈️ Tracking ${planes.length} planes`;
+
+                    if (!trackedFirstFetch) {
+                        trackedFirstFetch = true;
+                        track('planes-loaded', {
+                            count: planes.length,
+                            // Without a compass bearing the overlay can't aim, so the
+                            // AR view is effectively broken even though nothing errors.
+                            // This is the device-capability signal that matters most.
+                            compass: compassHeading !== null
+                        });
+                    }
                 }
             } catch (error) {
                 console.error('Error fetching planes:', error);
                 planeCountEl.textContent = '✈️ Error loading planes';
+                if (!trackedFetchError) {
+                    trackedFetchError = true;
+                    track('api-error', {
+                        message: String(error.message || '').slice(0, 100)
+                    });
+                }
             }
         }
 
@@ -1588,6 +1665,9 @@
         // Show detailed plane information
         async function showPlaneInfo(plane) {
             selectedPlane = plane;
+            // The one deliberate engagement action in the app -- tapping a marker
+            // means the overlay actually lined up with a real aircraft.
+            track('plane-tapped');
 
             // Show panel immediately with basic info
             document.getElementById('flight-number').textContent = plane.callsign || 'Unknown Flight';
