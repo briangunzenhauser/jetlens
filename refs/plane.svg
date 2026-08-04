@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 824 257" width="824" height="257">
+  <!--
+    Plane silhouette derived from the Material Symbols "flight_takeoff" icon
+    (Apache License 2.0). Modifications: removed the runway line and the wing,
+    then rotated the fuselage ~15deg so it sits flat/level. Nose points right.
+    The rotation is baked into the coordinates so the shape is self-contained
+    (no group transform) and renders correctly in any tool.
+  -->
+  <path d="M79.9 236.9L20 20L83 24.5L134.6 102.5L333.5 101.9L530.5 100.9L737.6 100.5Q770.9 100.1 790.5 127.1Q810.2 154.1 801.2 187.9Q795.5 209.2 778 222.1Q760.6 235 738.8 235.4L79.9 236.9Z"/>
+</svg>
