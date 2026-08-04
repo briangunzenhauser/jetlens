@@ -298,9 +298,8 @@
             align-items: center;
         }
 
-        /* One pair shows at a time -- spinner + status while loading, or button + note
-           once ready -- above a credit line that is always there, so a single gap
-           spaces whichever pair is visible. */
+        /* Only two of these show at once -- spinner + status while loading, or button +
+           note once ready -- so a single gap spaces whichever pair is visible. */
         .start-group {
             gap: 16px;
         }
@@ -452,12 +451,17 @@
             color: rgba(11, 44, 77, 0.5);
         }
 
-        /* Rides with the start group rather than sitting as a third child of #loading,
-           which would break the balanced space-between of wordmark against button.
-           Same size and weight of colour as the permission note -- it should recede
-           the same way. The extra margin sets it apart from whichever pair is above. */
+        /* Pinned to the very bottom. Absolute rather than a third flex child, because
+           #loading lays its children out with space-between and a third one would pull
+           the start group up to the middle, undoing the balance of wordmark against
+           button. It sits inside #loading's bottom padding, below the start group, and
+           clears the home indicator. Same size and weight of colour as the permission
+           note -- it should recede the same way. */
         #copyright {
-            margin-top: 8px;
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: max(16px, env(safe-area-inset-bottom));
             padding: 0 24px;
             text-align: center;
             font-size: 13px;
@@ -585,10 +589,10 @@
             <p id="permission-note" style="display: none;">
                 JetLens needs access to your camera and location to work properly.
             </p>
-            <p id="copyright">
-                Built by <a href="https://briangunzenhauser.com" target="_blank" rel="noopener">Brian Gunzenhauser</a>
-            </p>
         </div>
+        <p id="copyright">
+            Built by <a href="https://briangunzenhauser.com" target="_blank" rel="noopener">Brian Gunzenhauser</a>
+        </p>
     </div>
 
     <div id="intro" aria-hidden="true">
