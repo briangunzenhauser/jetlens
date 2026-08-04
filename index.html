@@ -298,8 +298,9 @@
             align-items: center;
         }
 
-        /* Only two of these show at once -- spinner + status while loading, or button +
-           note once ready -- so a single gap spaces whichever pair is visible. */
+        /* One pair shows at a time -- spinner + status while loading, or button + note
+           once ready -- above a credit line that is always there, so a single gap
+           spaces whichever pair is visible. */
         .start-group {
             gap: 16px;
         }
@@ -451,6 +452,29 @@
             color: rgba(11, 44, 77, 0.5);
         }
 
+        /* Rides with the start group rather than sitting as a third child of #loading,
+           which would break the balanced space-between of wordmark against button.
+           Same size and weight of colour as the permission note -- it should recede
+           the same way. The extra margin sets it apart from whichever pair is above. */
+        #copyright {
+            margin-top: 8px;
+            padding: 0 24px;
+            text-align: center;
+            font-size: 13px;
+            line-height: 1.5;
+            color: rgba(11, 44, 77, 0.5);
+        }
+
+        #copyright a {
+            color: inherit;
+            text-decoration: underline;
+            text-underline-offset: 2px;
+        }
+
+        #copyright a:hover {
+            color: var(--midnight);
+        }
+
         /* Shown once permissions are granted, then fades itself out. Never
            interactive -- it must not swallow a tap on a plane marker. */
         #intro {
@@ -554,6 +578,9 @@
             <button id="start-btn" style="display: none;">Start JetLens</button>
             <p id="permission-note" style="display: none;">
                 JetLens needs access to your camera and location to work properly.
+            </p>
+            <p id="copyright">
+                Built by <a href="https://briangunzenhauser.com" target="_blank" rel="noopener">Brian Gunzenhauser</a>
             </p>
         </div>
     </div>
