@@ -653,7 +653,8 @@
         // sends `Access-Control-Allow-Origin: *`, which the browser can call directly.
         //
         // Terms (https://airplanes.live/api-guide/): non-commercial use, no SLA, and
-        // rate limited to 1 request/second. We poll every 10s, well inside that.
+        // rate limited to 1 request/second. We poll every 5s, well inside that, and
+        // back off when they start refusing -- see pollLoop.
         // They ask that API users contribute data back to the network.
         const API_BASE = 'https://api.airplanes.live/v2';
 
@@ -986,9 +987,10 @@
                 loading.classList.add('hidden');
                 showIntro();
 
-                // Start fetching plane data
-                fetchPlanes();
-                setInterval(fetchPlanes, 5000); // Poll every 5s; positions are dead-reckoned between polls
+                // Start fetching plane data. pollLoop reschedules itself every 5s and
+                // backs off if airplanes.live starts failing; positions are dead-reckoned
+                // between polls.
+                pollLoop();
                 setInterval(updateMarkers, 100); // Update marker positions frequently
 
                 // Every permission cleared and the camera is live. This is the
@@ -1087,9 +1089,38 @@
             document.getElementById('debug-pitch').textContent = getDevicePitch().toFixed(1);
         }
 
-        // Fetch plane data from the airplanes.live API
+        // The healthy cadence, and the floor a failing upstream backs off to. Retrying a
+        // refusal at the same rate is what turns a soft throttle into an IP block, so
+        // failures double the delay up to the cap -- one request a minute instead of
+        // twelve -- and the first success drops straight back to POLL_INTERVAL_MS.
+        const POLL_INTERVAL_MS = 5000;
+        const MAX_POLL_BACKOFF_MS = 60000;
+
+        // A 429 may name its own delay, which we honour over our own doubling. Capped so
+        // an absurd value can't strand the app on a stale sky for the rest of the session.
+        const MAX_RETRY_AFTER_MS = 300000;
+
+        let pollDelay = POLL_INTERVAL_MS;
+        // Set by fetchPlanes when the upstream asked for a specific wait; consumed and
+        // cleared by the next pollLoop tick.
+        let upstreamRetryHint = null;
+
+        // Retry-After is either a delay in seconds or an HTTP date. Anything unparseable
+        // or already in the past falls through to the doubling.
+        function retryAfterMs(error) {
+            if (error.status !== 429 || !error.retryAfter) return null;
+            const secs = Number(error.retryAfter);
+            const ms = Number.isFinite(secs)
+                ? secs * 1000
+                : Date.parse(error.retryAfter) - Date.now();
+            if (!(ms > 0)) return null;
+            return Math.min(ms, MAX_RETRY_AFTER_MS);
+        }
+
+        // Fetch plane data from the airplanes.live API. Returns whether the poll landed,
+        // which is what pollLoop schedules on.
         async function fetchPlanes() {
-            if (!userLocation) return;
+            if (!userLocation) return true;
 
             try {
                 const { lat, lon } = userLocation;
@@ -1097,7 +1128,12 @@
 
                 const response = await fetch(url);
                 if (!response.ok) {
-                    throw new Error(`airplanes.live returned ${response.status}`);
+                    const err = new Error(`airplanes.live returned ${response.status}`);
+                    // Carried so the scheduler can tell "slow down, and here's how long"
+                    // apart from any other failure.
+                    err.status = response.status;
+                    err.retryAfter = response.headers.get('Retry-After');
+                    throw err;
                 }
                 const data = await response.json();
 
@@ -1154,6 +1190,10 @@
                         });
                     }
                 }
+
+                // A response with no `ac` array is still a healthy request -- an empty
+                // sky is an answer, not a failure.
+                return true;
             } catch (error) {
                 console.error('Error fetching planes:', error);
                 planeCountEl.textContent = '✈️ Error loading planes';
@@ -1163,7 +1203,24 @@
                         message: String(error.message || '').slice(0, 100)
                     });
                 }
+                upstreamRetryHint = retryAfterMs(error);
+                return false;
             }
+        }
+
+        // setTimeout rather than setInterval: the next poll is only scheduled once this
+        // one has resolved, so a slow upstream can never stack requests on top of itself.
+        async function pollLoop() {
+            const ok = await fetchPlanes();
+
+            if (ok) {
+                pollDelay = POLL_INTERVAL_MS;
+            } else {
+                pollDelay = upstreamRetryHint ?? Math.min(pollDelay * 2, MAX_POLL_BACKOFF_MS);
+                upstreamRetryHint = null;
+            }
+
+            setTimeout(pollLoop, pollDelay);
         }
 
         // Calculate bearing between two points
