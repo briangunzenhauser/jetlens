@@ -591,7 +591,8 @@
             </p>
         </div>
         <p id="copyright">
-            Built by <a href="https://briangunzenhauser.com" target="_blank" rel="noopener">Brian Gunzenhauser</a>
+            Built by <a href="https://briangunzenhauser.com" target="_blank" rel="noopener">Brian Gunzenhauser</a><br>
+            Flight data from <a href="https://adsb.fi" target="_blank" rel="noopener">adsb.fi</a>
         </p>
     </div>
 
@@ -654,19 +655,24 @@
     </div>
 
     <script>
-        // Aircraft data comes from airplanes.live, called directly from the browser.
+        // Aircraft data comes from adsb.fi, by way of our own function -- see
+        // netlify/functions/planes.mjs for why the proxy is back.
         //
-        // This replaced OpenSky, which blocks datacenter IP ranges outright -- every
-        // connection from Cloudflare Workers AND Netlify Functions timed out at the
-        // TCP level while the same request from a laptop succeeded. No serverless
-        // proxy can reach it, so there is no proxy to host anymore: airplanes.live
-        // sends `Access-Control-Allow-Origin: *`, which the browser can call directly.
+        // The short version: this called airplanes.live directly because it sent
+        // `Access-Control-Allow-Origin: *`. In August 2026 it closed its data
+        // endpoints to anonymous callers (403, globally -- not a block on us), and
+        // no replacement sends an ACAO header, so no provider can be reached from
+        // the browser any more. The function is the only way to make the call.
         //
-        // Terms (https://airplanes.live/api-guide/): non-commercial use, no SLA, and
-        // rate limited to 1 request/second. We poll every 5s, well inside that, and
-        // back off when they start refusing -- see pollLoop.
-        // They ask that API users contribute data back to the network.
-        const API_BASE = 'https://api.airplanes.live/v2';
+        // Note this is NOT the OpenSky situation that killed the previous proxy:
+        // OpenSky blocks datacenter IP ranges at the TCP level, and adsb.fi does
+        // not -- it answers serverless callers fine.
+        //
+        // Terms (https://github.com/adsbfi/opendata): personal, non-commercial use,
+        // 1 request/second, attribution with a link required -- it's on the start
+        // screen. The rate limit is now shared across everyone using the app rather
+        // than per-visitor, so the function caches and spaces its upstream calls.
+        const API_BASE = '/api/planes';
 
         // Request radius in nautical miles. MAX_DISTANCE below filters to 80km (~43nm)
         // for display, so this only needs enough margin to cover it.
@@ -1134,11 +1140,11 @@
 
             try {
                 const { lat, lon } = userLocation;
-                const url = `${API_BASE}/point/${lat}/${lon}/${FETCH_RADIUS_NM}`;
+                const url = `${API_BASE}?lat=${lat}&lon=${lon}&radius=${FETCH_RADIUS_NM}`;
 
                 const response = await fetch(url);
                 if (!response.ok) {
-                    const err = new Error(`airplanes.live returned ${response.status}`);
+                    const err = new Error(`plane feed returned ${response.status}`);
                     // Carried so the scheduler can tell "slow down, and here's how long"
                     // apart from any other failure.
                     err.status = response.status;

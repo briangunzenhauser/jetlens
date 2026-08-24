@@ -7,6 +7,7 @@
 #
 # Usage: ./dev.sh
 # Requires: cloudflared  (brew install cloudflared)
+#           netlify      (npm i -g netlify-cli)
 
 set -euo pipefail
 
@@ -17,13 +18,29 @@ if ! command -v cloudflared >/dev/null; then
   exit 1
 fi
 
+if ! command -v netlify >/dev/null; then
+  echo "netlify not found. Install it with:  npm i -g netlify-cli" >&2
+  exit 1
+fi
+
 cd "$(dirname "$0")"
 
-python3 -m http.server "$PORT" >/dev/null 2>&1 &
+# `netlify dev` rather than a plain static server: the plane feed goes through a
+# function now (netlify/functions/planes.mjs), and python's http.server would just
+# 404 the /api/planes call, leaving the sky permanently empty.
+netlify dev --port "$PORT" >/dev/null 2>&1 &
 SERVER_PID=$!
 trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
 
-echo "Serving $(pwd) on :$PORT"
+echo "Serving $(pwd) on :$PORT -- waiting for netlify dev to bind..."
+
+# The tunnel must not start before netlify dev is listening, or cloudflared
+# publishes a URL that 502s until the server catches up.
+for _ in $(seq 1 30); do
+  curl -sf "http://localhost:$PORT" >/dev/null 2>&1 && break
+  sleep 1
+done
+
 echo "Starting tunnel -- open the https://*.trycloudflare.com URL below on your phone."
 echo
 

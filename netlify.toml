@@ -1,5 +1,18 @@
-# JetLens is a single static page -- no build step, no functions, no secrets.
-# Aircraft data comes straight from api.airplanes.live in the browser; see the
-# comment above API_BASE in index.html for why there is no proxy.
+# JetLens is a single static page plus one function.
+#
+# The function proxies adsb.fi: no aircraft API still allows browser-direct calls,
+# so the request has to be made server-side. See the comment above API_BASE in
+# index.html, and netlify/functions/planes.mjs, for the full story. No secrets --
+# adsb.fi's open data API takes no credentials.
 [build]
   publish = "."
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+# Keeps the app's own URL tidy and independent of Netlify's function path.
+[[redirects]]
+  from = "/api/planes"
+  to = "/.netlify/functions/planes"
+  status = 200
