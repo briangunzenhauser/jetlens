@@ -1065,11 +1065,17 @@
             // when tracking started. Bearings run clockwise from true north, so using
             // alpha directly points markers at the wrong part of the sky.
             if (typeof event.webkitCompassHeading === 'number') {
-                // iOS: already clockwise from north.
+                // iOS: already clockwise from north, but alpha isn't, so measure how
+                // far apart they sit.
                 compassHeading = event.webkitCompassHeading;
+                updateAlphaOffset();
             } else if (event.absolute === true) {
                 // Android absolute events: convert counter-clockwise to clockwise.
+                // Alpha's zero already is north, so there is no offset to measure --
+                // and measuring one anyway would pick up roll near upright.
                 compassHeading = (360 - event.alpha) % 360;
+                alphaOffset = 0;
+                alphaOffsetLevel = true;
             } else {
                 compassHeading = null;
             }
@@ -1323,29 +1329,48 @@
             return Math.asin(Math.max(-1, Math.min(1, forward[2]))) * 180 / Math.PI;
         }
 
-        // The camera's field of view across the *short* edge of the screen, degrees.
+        // The camera's field of view along the *long* edge of its stream, degrees.
         //
         // This is the one number here that is genuinely an estimate -- it varies by
-        // handset, and `object-fit: cover` on the preview crops the stream by an amount
-        // that depends on the viewport's shape. It is the value to calibrate if markers
-        // sit consistently too far in or too far out from the planes they label.
-        const CAMERA_FOV_ACROSS = 55;
-
-        // The long edge follows from the viewport's shape rather than being guessed
-        // separately, because a lens has one focal length and both axes share it.
+        // handset (a 26mm-equivalent main lens is about 67°). It is the value to
+        // calibrate if markers sit consistently too far in or too far out from the
+        // planes they label.
         //
-        // These used to be two independent constants, 70 across and 50 down. On a
-        // portrait phone that put the *wider* angle on the *narrower* edge -- roughly
-        // 0.18° per pixel across against 0.064° down, a 2.8x distortion that stretched
-        // the overlay one way and squashed it the other. The tight vertical window was
-        // also what clipped the sky directly overhead, so planes near the zenith were
-        // dropped while the same planes further out still passed the check.
-        function fieldOfView() {
-            const halfAcross = CAMERA_FOV_ACROSS / 2 * Math.PI / 180;
-            const aspect = window.innerHeight / window.innerWidth;
+        // It is pinned to the long edge because that is the one the preview shows in
+        // full. A portrait screen (~1:2.16) is taller than the stream (9:16 or 3:4), so
+        // `object-fit: cover` fills the height and crops the sides. An earlier version
+        // pinned 55° to the screen's short edge -- the cropped one -- and derived the
+        // long edge from the screen's shape, which came out near 97°: everything drawn
+        // 1.5-1.7x too close to the centre. Before that it was two independent
+        // constants, 70 across and 50 down, which was wrong both ways round.
+        const CAMERA_FOV_LONG = 67;
 
-            // Pinhole geometry: the half-angles scale through the tangent, not linearly.
-            return { halfAcross, halfDown: Math.atan(Math.tan(halfAcross) * aspect) };
+        // Half-angles of what is actually visible on screen, in radians, worked out from
+        // the stream's real shape and how much of it `cover` crops away. A lens has one
+        // focal length, so the stream's short edge follows from its long one.
+        function fieldOfView() {
+            const W = window.innerWidth, H = window.innerHeight;
+
+            // Before the first frame arrives the stream has no size yet; assume 16:9
+            // (what the 1920-wide request normally gets) in the screen's orientation.
+            let vw = video.videoWidth, vh = video.videoHeight;
+            if (!vw || !vh) {
+                [vw, vh] = W < H ? [9, 16] : [16, 9];
+            }
+
+            // Pinhole geometry: positions on the sensor scale with the tangent.
+            const tanLong = Math.tan(CAMERA_FOV_LONG / 2 * Math.PI / 180);
+            const tanW = vw >= vh ? tanLong : tanLong * vw / vh;
+            const tanH = vh >= vw ? tanLong : tanLong * vh / vw;
+
+            // `cover` scales the stream until both edges fill the screen; whatever
+            // overhangs is cropped, and with it that share of the field of view.
+            const scale = Math.max(W / vw, H / vh);
+
+            return {
+                halfAcross: Math.atan(tanW * W / (vw * scale)),
+                halfDown: Math.atan(tanH * H / (vh * scale))
+            };
         }
 
         // Bearing and elevation are spherical coordinates, not independent flat axes:
@@ -1386,7 +1411,7 @@
         // on its own. Their product does not, because the jitter cancels. So the
         // orientation stays trustworthy even where the individual angles are junk.
         //
-        // Alpha's zero point is arbitrary and drifts; cameraBasis corrects for that.
+        // Alpha's zero point is arbitrary and drifts; orientedMatrix corrects for that.
         //
         // Device axes: x across the screen to the right, y up the screen, z out of
         // the front. The camera looks out the back, so it points along -z.
@@ -1414,30 +1439,85 @@
             ];
         }
 
-        // The device's yaw, measured from true north instead of from alpha's arbitrary
-        // zero. Both are rotations about the same axis -- the device's own z -- so the
-        // compass correction belongs here, in yaw space, before the matrix is built.
+        // How far alpha's arbitrary zero sits from true north, in degrees of bearing,
+        // or null until it has been measured.
         //
-        // This replaced a correction applied at the other end: the finished basis was
-        // spun by `compassHeading` minus the *camera's* bearing. Those two bearings
-        // only agree while the phone is held square. Roll it and the camera axis swings
-        // away from the yaw axis, so the difference quietly absorbed the roll -- about
-        // 22° of error at 20° of roll, 48° at 45°, a full 90° held sideways.
-        //
-        // That error then got stuck. The spin could only be measured below ~64° of
-        // pitch, because past that the camera's bearing is noise, so the last value
-        // measured on the way up was frozen and reused for the whole time you were
-        // looking up. Whatever roll your wrist happened to have as you swung the phone
-        // overhead was latched in and rotated the entire sky -- which is why pointing
-        // straight up put planes somewhere out near the edge of the view instead of
-        // overhead, and why the direction you got depended on where you started.
-        //
-        // Correcting alpha is exact at every pitch and roll, needs no frozen fallback,
-        // and leaves nothing to go stale.
+        // This is a slowly drifting property of the sensors, not of the pose -- alpha
+        // already tracks the movement -- so it is measured whenever the pose allows and
+        // reused otherwise. Correcting alpha by a steady offset, rather than replacing
+        // it, matters: held upright, alpha and gamma are degenerate and only their sum
+        // means anything. Swapping alpha for an independently smoothed compass reading
+        // (as a previous version did) breaks that pairing, and if iOS's heading follows
+        // the camera it counts the roll twice -- 10° off at 10° of roll.
+        let alphaOffset = null;
+        let alphaOffsetLevel = false;  // was it measured with the phone held level?
+
+        // Below this much roll -- the phone's x axis this close to horizontal -- it
+        // counts as level. The offset is taken as webkitCompassHeading minus the
+        // camera's bearing, and held level that bearing is cleanly defined with no roll
+        // mixed in, so only level readings are trusted once one has been seen. That
+        // also stops a tilted wrist on the way up from being latched into the offset
+        // and rotating the whole sky.
+        const LEVEL_ROLL_SIN = Math.sin(6 * Math.PI / 180);
+
+        // Past this pitch the camera's horizontal part is too small to give a bearing.
+        const MEASURABLE_PITCH_SIN = Math.sin(64 * Math.PI / 180);
+
+        // Smoothing per event, so magnetometer jitter doesn't shake the overlay.
+        const OFFSET_SMOOTHING = 0.1;
+
+        function updateAlphaOffset() {
+            if (compassHeading === null) return;
+
+            const m = orientationMatrix(
+                deviceOrientation.alpha,
+                deviceOrientation.beta,
+                deviceOrientation.gamma
+            );
+            const forward = apply(m, [0, 0, -1]);
+            const right = apply(m, [1, 0, 0]);
+            const up = apply(m, [0, 1, 0]);
+
+            if (Math.abs(forward[2]) > MEASURABLE_PITCH_SIN) return;
+
+            // Top of the phone below the horizon means it is upside down, where the
+            // possible meanings of the compass reading disagree by 180°.
+            if (up[2] <= 0) return;
+
+            const level = Math.abs(right[2]) < LEVEL_ROLL_SIN;
+
+            // Until a level reading arrives, take any measurable one so there is
+            // something to work with; once one has, only level readings count.
+            if (alphaOffsetLevel && !level) return;
+
+            const azimuth = Math.atan2(forward[0], forward[1]) * 180 / Math.PI;
+            const measured = compassHeading - azimuth;
+
+            if (alphaOffset === null || (level && !alphaOffsetLevel)) {
+                alphaOffset = measured;
+            } else {
+                // Step along the shorter way round the circle.
+                const diff = ((measured - alphaOffset) % 360 + 540) % 360 - 180;
+                alphaOffset += diff * OFFSET_SMOOTHING;
+            }
+            alphaOffset = (alphaOffset % 360 + 360) % 360;
+            alphaOffsetLevel = alphaOffsetLevel || level;
+        }
+
+        // The device's rotation, referenced to true north. Bearings run clockwise and
+        // alpha counter-clockwise, so turning the bearings by the offset means taking
+        // it off alpha.
         function orientedMatrix() {
-            const alpha = compassHeading === null
-                ? deviceOrientation.alpha
-                : (360 - compassHeading + 360) % 360;
+            let alpha = deviceOrientation.alpha;
+
+            if (alphaOffset !== null) {
+                alpha = (alpha - alphaOffset + 360) % 360;
+            } else if (compassHeading !== null) {
+                // Not measured yet (the phone has only been pointed near-vertical):
+                // treat the compass reading as the yaw. Exact while level, off by the
+                // roll otherwise, and replaced as soon as a real measurement lands.
+                alpha = (360 - compassHeading) % 360;
+            }
 
             return orientationMatrix(alpha, deviceOrientation.beta, deviceOrientation.gamma);
         }
