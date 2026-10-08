@@ -4,8 +4,12 @@
 # so the request has to be made server-side. See the comment above API_BASE in
 # index.html, and netlify/functions/planes.mjs, for the full story. No secrets --
 # adsb.fi's open data API takes no credentials.
+# index.html is the readable source; `node build.mjs` minifies it into dist/.
+# See the comment at the top of build.mjs for why this is a build step and not an
+# edit in place.
 [build]
-  publish = "."
+  command = "node build.mjs"
+  publish = "dist"
 
 [functions]
   directory = "netlify/functions"
@@ -16,3 +20,18 @@
   from = "/api/planes"
   to = "/.netlify/functions/planes"
   status = 200
+
+# The page is one file with everything inlined, and it changes whenever the app
+# does, so it must always be revalidated -- this is Netlify's default for HTML and
+# is spelled out here only to make the intent explicit alongside the rule below.
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+# The feed is polled every few seconds and the function already caches upstream,
+# so let a shared cache absorb bursts without ever handing a phone a stale sky.
+[[headers]]
+  for = "/api/planes"
+  [headers.values]
+    Cache-Control = "public, max-age=0, s-maxage=4, stale-while-revalidate=10"

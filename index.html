@@ -6,7 +6,27 @@
     <title>JetLens</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;800&display=swap" rel="stylesheet">
+    <!-- Sora is the wordmark on the start screen, and it used to be fetched with a
+         plain stylesheet link: two sequential round trips to two third-party origins
+         before the browser would paint anything at all. The font is already set to
+         display=swap, so the page was going to show fallback text first regardless --
+         it was just doing it *after* the wait rather than before.
+
+         So: preload it at high priority, attach it as a stylesheet that matches no
+         screen (media="print" does not block render), and let the script switch it on
+         once it lands. Same font, same swap, first paint no longer waits for it.
+
+         Weight 400 was in the old URL and is used by nothing -- #brand is 800,
+         #tagline and #start-btn are 600. Google serves one variable font either way,
+         so dropping it trims the CSS rather than a whole file. -->
+    <link rel="preload" as="style" fetchpriority="high"
+          href="https://fonts.googleapis.com/css2?family=Sora:wght@600;800&display=swap">
+    <link id="font-css" rel="stylesheet" media="print"
+          href="https://fonts.googleapis.com/css2?family=Sora:wght@600;800&display=swap">
+    <noscript>
+        <link rel="stylesheet"
+              href="https://fonts.googleapis.com/css2?family=Sora:wght@600;800&display=swap">
+    </noscript>
     <!-- Umami (cookieless, no consent banner needed). data-domains keeps local dev
          and any fork off the dashboard -- events only send from the live host. -->
     <script defer src="https://cloud.umami.is/script.js"
@@ -33,6 +53,18 @@
             width: 100vw;
             height: 100vh;
             object-fit: cover;
+        }
+
+        /* Darkens the overhead part of the sky, where markers are least reliable --
+           see drawDomeShade. Drawn at a few dozen pixels across and stretched; the
+           browser's smoothing turns that into a soft gradient for free. */
+        #dome-shade {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
         }
 
         #overlay {
@@ -207,6 +239,12 @@
             font-size: 20px;
             font-weight: 700;
             letter-spacing: 0.02em;
+        }
+        #heading-pill #heading-tilt {
+            font-size: 15px;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+            opacity: 0.85;
         }
 
         /* Raw sensor readout, testing only. Hidden unless the URL carries ?debug. */
@@ -601,6 +639,7 @@
     </div>
 
     <video id="video" autoplay playsinline></video>
+    <canvas id="dome-shade"></canvas>
     <div id="overlay"></div>
     <div class="crosshair"></div>
 
@@ -612,6 +651,7 @@
     <div id="heading-pill">
         <span class="heading-label">Facing</span>
         <span id="heading-dir">—</span>
+        <span id="heading-tilt"></span>
     </div>
 
     <div id="debug" hidden>
@@ -655,6 +695,12 @@
     </div>
 
     <script>
+        // Switch on the webfont, which the head deliberately attached as media="print"
+        // so it could not block first paint. By the time this runs the preload has
+        // normally already fetched it, so the swap is immediate. First statement in
+        // the file because nothing below should be able to fail before it.
+        document.getElementById('font-css').media = 'all';
+
         // Aircraft data comes from adsb.fi, by way of our own function -- see
         // netlify/functions/planes.mjs for why the proxy is back.
         //
@@ -1007,7 +1053,10 @@
                 // backs off if airplanes.live starts failing; positions are dead-reckoned
                 // between polls.
                 pollLoop();
-                setInterval(updateMarkers, 100); // Update marker positions frequently
+                setInterval(() => { // Update marker positions frequently
+                    updateMarkers();
+                    drawDomeShade();
+                }, 100);
 
                 // Every permission cleared and the camera is live. This is the
                 // denominator for everything else in the funnel.
@@ -1122,17 +1171,28 @@
             return (Math.atan2(forward[0], forward[1]) * 180 / Math.PI + 360) % 360;
         }
 
-        // The one orientation readout end users see: which way they're facing.
+        // The one orientation readout end users see: which way they're facing, and
+        // how far above (or below) the horizon the camera is tilted.
+        //
+        // The tilt comes from gravity alone, so unlike the bearing it needs no compass
+        // and is shown even without one.
         function updateHeadingDisplay() {
             const el = document.getElementById('heading-dir');
+            const pitch = getDevicePitch();
+
+            const tilt = Math.round(Math.abs(pitch));
+            document.getElementById('heading-tilt').textContent =
+                tilt === 0 ? '0°' : `${tilt}° ${pitch > 0 ? '↑' : '↓'}`;
 
             if (compassHeading === null) {
                 el.textContent = '—';
                 return;
             }
 
+            // The dead zone covers straight down as well as straight up; say which.
             const bearing = facingBearing();
-            el.textContent = bearing === null ? 'Up' : bearingToCompass(bearing);
+            el.textContent = bearing !== null ? bearingToCompass(bearing)
+                : pitch > 0 ? 'Up' : 'Down';
         }
 
         // Raw sensor values, shown only in debug mode (see ?debug at startup).
@@ -1577,6 +1637,67 @@
                 x: (0.5 + Math.tan(offset.x * Math.PI / 180) / (2 * Math.tan(halfAcross))) * window.innerWidth,
                 y: (0.5 - Math.tan(offset.y * Math.PI / 180) / (2 * Math.tan(halfDown))) * window.innerHeight
             };
+        }
+
+        // Elevation band where the overlay stops being trustworthy, shaded darker so it
+        // is obvious on screen. A fixed error in a plane's reported position (data
+        // age, the viewer's own GPS fix) turns into an angular error inversely
+        // proportional to how far away the plane is -- and an aircraft overhead is as
+        // close as it ever gets. Past ~60° a low airliner's marker routinely lands far
+        // enough off to miss the screen. The shade ramps in across this band rather
+        // than starting at a hard line, because the error grows gradually too.
+        const DOME_SHADE_START_DEG = 55;
+        const DOME_SHADE_FULL_DEG = 68;
+        const DOME_SHADE_MAX_ALPHA = 0.45;
+
+        // Canvas resolution across the screen's short edge. The shade has no detail
+        // worth more than this, and at 10fps a few thousand pixels cost nothing.
+        const DOME_SHADE_RES = 36;
+
+        const domeShade = document.getElementById('dome-shade');
+        const domeCtx = domeShade.getContext('2d');
+
+        // Shades every part of the screen looking above DOME_SHADE_START_DEG. Works
+        // per pixel rather than by tracing the band's outline, so it stays correct at
+        // any roll and whether the zenith is on screen, off it, or dead centre.
+        //
+        // Elevation depends only on gravity -- the compass just spins the view about
+        // the vertical -- so this is right even before a compass reading arrives.
+        function drawDomeShade() {
+            const W = window.innerWidth, H = window.innerHeight;
+            const scale = DOME_SHADE_RES / Math.min(W, H);
+            const w = Math.max(1, Math.round(W * scale));
+            const h = Math.max(1, Math.round(H * scale));
+            if (domeShade.width !== w || domeShade.height !== h) {
+                domeShade.width = w;
+                domeShade.height = h;
+            }
+
+            const { forward, right, up } = cameraBasis();
+            const { halfAcross, halfDown } = fieldOfView();
+            const tanX = Math.tan(halfAcross), tanY = Math.tan(halfDown);
+            const start = Math.sin(DOME_SHADE_START_DEG * Math.PI / 180);
+            const full = Math.sin(DOME_SHADE_FULL_DEG * Math.PI / 180);
+
+            const image = domeCtx.createImageData(w, h);
+            const px = image.data;
+
+            for (let j = 0; j < h; j++) {
+                // The inverse of planeToScreenPosition: screen point -> direction.
+                const v = (0.5 - (j + 0.5) / h) * 2 * tanY;
+                for (let i = 0; i < w; i++) {
+                    const u = ((i + 0.5) / w - 0.5) * 2 * tanX;
+                    const dz = forward[2] + u * right[2] + v * up[2];
+                    const sinEl = dz / Math.sqrt(1 + u * u + v * v);
+
+                    if (sinEl <= start) continue;
+                    const t = Math.min(1, (sinEl - start) / (full - start));
+                    // Smoothstep, so the edge of the band doesn't read as a line.
+                    px[(j * w + i) * 4 + 3] = 255 * DOME_SHADE_MAX_ALPHA * t * t * (3 - 2 * t);
+                }
+            }
+
+            domeCtx.putImageData(image, 0, 0);
         }
 
         // How far past its last fix a plane may be dead-reckoned. Positions come in

@@ -1,0 +1,14 @@
+{
+  "name": "jetlens",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch"
+  },
+  "devDependencies": {
+    "clean-css": "^5.3.3",
+    "esbuild": "^0.25.0",
+    "html-minifier-terser": "^7.2.0"
+  }
+}
