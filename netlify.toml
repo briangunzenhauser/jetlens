@@ -29,9 +29,5 @@
   [headers.values]
     Cache-Control = "public, max-age=0, must-revalidate"
 
-# The feed is polled every few seconds and the function already caches upstream,
-# so let a shared cache absorb bursts without ever handing a phone a stale sky.
-[[headers]]
-  for = "/api/planes"
-  [headers.values]
-    Cache-Control = "public, max-age=0, s-maxage=4, stale-while-revalidate=10"
+# No [[headers]] rule for /api/planes: a function response's own headers win, so
+# its edge caching is set in netlify/functions/planes.mjs (see CDN_CACHE there).

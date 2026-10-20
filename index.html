@@ -724,6 +724,13 @@
         // for display, so this only needs enough margin to cover it.
         const FETCH_RADIUS_NM = 50;
 
+        // Must match GRID_DEG in netlify/functions/planes.mjs. Snapping here rather than
+        // only in the function is what makes the edge cache work: it keys on the full
+        // URL, so viewers sending exact coordinates would never share an entry. See that
+        // file for why the offset stays inside the FETCH_RADIUS_NM margin.
+        const FETCH_GRID_DEG = 0.05;
+        const snapToGrid = (n) => (Math.round(n / FETCH_GRID_DEG) * FETCH_GRID_DEG).toFixed(2);
+
         // airplanes.live reports feet and knots; the rest of this file works in the
         // meters and m/s that OpenSky used, and converts to ft/kt only for display.
         // Normalizing here keeps every calculation downstream untouched.
@@ -932,8 +939,8 @@
             }
         }
 
-        // Both of these fire on a 5s poll, so they are reported once per session
-        // rather than per poll. A sustained API outage would otherwise burn ~720
+        // Both of these fire on a 10s poll, so they are reported once per session
+        // rather than per poll. A sustained API outage would otherwise burn ~360
         // events an hour and tell us nothing the first report didn't.
         let trackedFirstFetch = false;
         let trackedFetchError = false;
@@ -1049,8 +1056,8 @@
                 loading.classList.add('hidden');
                 showIntro();
 
-                // Start fetching plane data. pollLoop reschedules itself every 5s and
-                // backs off if airplanes.live starts failing; positions are dead-reckoned
+                // Start fetching plane data. pollLoop reschedules itself every 10s and
+                // backs off if the feed starts failing; positions are dead-reckoned
                 // between polls.
                 pollLoop();
                 setInterval(() => { // Update marker positions frequently
@@ -1208,8 +1215,12 @@
         // The healthy cadence, and the floor a failing upstream backs off to. Retrying a
         // refusal at the same rate is what turns a soft throttle into an IP block, so
         // failures double the delay up to the cap -- one request a minute instead of
-        // twelve -- and the first success drops straight back to POLL_INTERVAL_MS.
-        const POLL_INTERVAL_MS = 5000;
+        // six -- and the first success drops straight back to POLL_INTERVAL_MS.
+        //
+        // 10s rather than faster because the upstream's 1 request/second is shared by
+        // every viewer, so this sets how many places the app can serve at once. Markers
+        // are dead-reckoned between polls, so the slower cadence barely shows.
+        const POLL_INTERVAL_MS = 10000;
         const MAX_POLL_BACKOFF_MS = 60000;
 
         // A 429 may name its own delay, which we honour over our own doubling. Capped so
@@ -1240,9 +1251,13 @@
 
             try {
                 const { lat, lon } = userLocation;
-                const url = `${API_BASE}?lat=${lat}&lon=${lon}&radius=${FETCH_RADIUS_NM}`;
+                const url = `${API_BASE}?lat=${snapToGrid(lat)}&lon=${snapToGrid(lon)}&radius=${FETCH_RADIUS_NM}`;
 
                 const response = await fetch(url);
+                // An edge-cached answer can be several seconds old on arrival. Dating
+                // the fixes by when they were fetched upstream, not when they reached
+                // us, keeps dead-reckoning from drawing every plane behind where it is.
+                const ageMs = (Number(response.headers.get('Age')) || 0) * 1000;
                 if (!response.ok) {
                     const err = new Error(`plane feed returned ${response.status}`);
                     // Carried so the scheduler can tell "slow down, and here's how long"
@@ -1281,7 +1296,7 @@
                             on_ground: onGround,
                             // When this fix was received, so markers can be dead-reckoned
                             // forward between polls instead of freezing. See extrapolatePlane.
-                            fetchedAt: Date.now()
+                            fetchedAt: Date.now() - ageMs
                         };
                     }).filter(plane =>
                         plane.latitude &&
@@ -1701,11 +1716,12 @@
         }
 
         // How far past its last fix a plane may be dead-reckoned. Positions come in
-        // every few seconds; between them a fast, low, overhead plane would otherwise
+        // every 10s; between them a fast, low, overhead plane would otherwise
         // freeze and then lurch. Advancing it along its own track keeps the marker
         // moving. Capped so that if fetches stall the marker settles rather than
-        // sailing off on a stale velocity.
-        const MAX_EXTRAPOLATION_S = 15;
+        // sailing off on a stale velocity -- but with room for the poll interval plus
+        // an edge-cached answer's age, or markers would pause just before each update.
+        const MAX_EXTRAPOLATION_S = 30;
         const EARTH_RADIUS_M = 6371000;
 
         // Last known position advanced forward to `now` along the plane's ground track.

@@ -26,10 +26,24 @@ const UPSTREAM = 'https://opendata.adsb.fi/api/v2';
 // throttling, six people with the app open would exceed it on their own.
 const MIN_UPSTREAM_SPACING_MS = 1100;
 
-// The browser polls every 5s. Serving anything younger than this from cache
+// The browser polls every 10s. Serving anything younger than this from cache
 // keeps a single viewer to roughly one upstream call per poll while letting
 // several viewers in the same area share one.
-const CACHE_TTL_MS = 4000;
+//
+// This in-memory cache only helps viewers who land on the same warm instance,
+// which under concurrency they mostly don't: each Lambda instance handles one
+// request at a time, so simultaneous viewers fan out to separate instances. The
+// edge cache (CDN_CACHE below) is what actually dedupes across viewers.
+const CACHE_TTL_MS = 8000;
+
+// Netlify's edge caches function responses that ask for it, keyed on the full
+// URL -- the browser snaps its coordinates to GRID_DEG so that everyone in a
+// grid cell sends the same one. `durable` shares the entry across edge nodes
+// rather than each node fetching its own. Kept just under the 10s poll so a
+// steady viewer still sees each new answer; stale-while-revalidate lets a burst
+// on an expired entry get the old answer while one request refreshes it.
+// The browser itself must not cache, or it would never ask the edge again.
+const CDN_CACHE = 'public, durable, s-maxage=8, stale-while-revalidate=10';
 
 // Query coordinates are snapped to this grid before going upstream, so nearby
 // viewers share a cache entry instead of each cutting their own. It also means
@@ -55,11 +69,15 @@ let nextUpstreamAt = 0;
 
 const snap = (n) => Math.round(n / GRID_DEG) * GRID_DEG;
 
-const json = (statusCode, body, maxAge = 0) => ({
+// Only fresh upstream answers are edge-cacheable. Errors must not be, and nor
+// must a stale fallback, or the edge would keep serving it after recovery.
+const json = (statusCode, body, cacheable = false) => ({
     statusCode,
     headers: {
         'Content-Type': 'application/json',
-        'Cache-Control': maxAge ? `public, max-age=${maxAge}` : 'no-store'
+        ...(cacheable
+            ? { 'Cache-Control': 'public, max-age=0, must-revalidate', 'Netlify-CDN-Cache-Control': CDN_CACHE }
+            : { 'Cache-Control': 'no-store' })
     },
     body: JSON.stringify(body)
 });
@@ -87,7 +105,7 @@ export const handler = async (event) => {
 
     const hit = cache.get(key);
     if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
-        return json(200, hit.body);
+        return json(200, hit.body, true);
     }
 
     // Two viewers of the same patch of sky landing together shouldn't each open
@@ -95,7 +113,7 @@ export const handler = async (event) => {
     const pending = inFlight.get(key);
     if (pending) {
         try {
-            return json(200, await pending);
+            return json(200, await pending, true);
         } catch {
             // The shared call failed. Fall through and try again below rather
             // than failing this request on someone else's error.
@@ -146,7 +164,7 @@ export const handler = async (event) => {
     inFlight.set(key, attempt);
 
     try {
-        return json(200, await attempt);
+        return json(200, await attempt, true);
     } catch (error) {
         // A stale sky beats no sky: if the upstream just failed but we hold a
         // recent answer for this spot, serve it rather than blanking the map.
