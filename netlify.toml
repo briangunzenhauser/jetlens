@@ -15,11 +15,8 @@
   directory = "netlify/functions"
   node_bundler = "esbuild"
 
-# Keeps the app's own URL tidy and independent of Netlify's function path.
-[[redirects]]
-  from = "/api/planes"
-  to = "/.netlify/functions/planes"
-  status = 200
+# No redirect for /api/planes: the function claims that path itself via its
+# `config` export (see the end of netlify/functions/planes.mjs).
 
 # The page is one file with everything inlined, and it changes whenever the app
 # does, so it must always be revalidated -- this is Netlify's default for HTML and

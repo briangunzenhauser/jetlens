@@ -71,21 +71,29 @@ const snap = (n) => Math.round(n / GRID_DEG) * GRID_DEG;
 
 // Only fresh upstream answers are edge-cacheable. Errors must not be, and nor
 // must a stale fallback, or the edge would keep serving it after recovery.
-const json = (statusCode, body, cacheable = false) => ({
-    statusCode,
-    headers: {
-        'Content-Type': 'application/json',
-        ...(cacheable
-            ? { 'Cache-Control': 'public, max-age=0, must-revalidate', 'Netlify-CDN-Cache-Control': CDN_CACHE }
-            : { 'Cache-Control': 'no-store' })
-    },
-    body: JSON.stringify(body)
-});
+const json = (status, body, cacheable = false, extraHeaders = {}) =>
+    new Response(JSON.stringify(body), {
+        status,
+        headers: {
+            'Content-Type': 'application/json',
+            ...(cacheable
+                ? { 'Cache-Control': 'public, max-age=0, must-revalidate', 'Netlify-CDN-Cache-Control': CDN_CACHE }
+                : { 'Cache-Control': 'no-store' }),
+            ...extraHeaders
+        }
+    });
 
-export const handler = async (event) => {
-    const lat = Number(event.queryStringParameters?.lat);
-    const lon = Number(event.queryStringParameters?.lon);
-    const radius = Number(event.queryStringParameters?.radius);
+// Functions API v2 (Request in, Response out) rather than the Lambda-style
+// handler(event): Netlify documents the durable cache only for this format, and
+// the Lambda-style version's responses were never stored there -- each edge node
+// kept its own copy, so viewers on different nodes each cost an upstream call.
+export default async (req) => {
+    const params = new URL(req.url).searchParams;
+    // `?? NaN` because a missing param is null, and Number(null) is 0 -- which
+    // would pass the range checks below as a real coordinate off West Africa.
+    const lat = Number(params.get('lat') ?? NaN);
+    const lon = Number(params.get('lon') ?? NaN);
+    const radius = Number(params.get('radius') ?? NaN);
 
     // Reject anything malformed here rather than passing it upstream, where a
     // 4xx would count against the IP that every visitor now shares.
@@ -172,13 +180,18 @@ export const handler = async (event) => {
         if (stale) return json(200, stale.body);
 
         const status = error.status === 429 ? 429 : 502;
-        const headers = {};
-        if (error.retryAfter) headers['Retry-After'] = error.retryAfter;
-        return {
-            ...json(status, { error: String(error.message || 'upstream request failed') }),
-            headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers }
-        };
+        return json(
+            status,
+            { error: String(error.message || 'upstream request failed') },
+            false,
+            error.retryAfter ? { 'Retry-After': error.retryAfter } : {}
+        );
     } finally {
         if (inFlight.get(key) === attempt) inFlight.delete(key);
     }
 };
+
+// Served at the app's own URL directly instead of through a netlify.toml rewrite
+// to /.netlify/functions/planes, so nothing sits between the edge cache and the
+// function's headers.
+export const config = { path: '/api/planes' };
