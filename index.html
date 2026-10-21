@@ -31,7 +31,7 @@
          and any fork off the dashboard -- events only send from the live host. -->
     <script defer src="https://cloud.umami.is/script.js"
             data-website-id="500575f5-2b2b-402b-a51d-4327459c82c9"
-            data-domains="jetlens.netlify.app"></script>
+            data-domains="jetlens.app,jetlens.netlify.app"></script>
     <style>
         * {
             margin: 0;
@@ -903,6 +903,27 @@
         //   ?preview=start   the first screen (identical to normal load)
         const previewMode = new URLSearchParams(location.search).get('preview');
 
+        // iPadOS reports itself as a Mac, so the touch check is what catches it.
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        const isAndroid = /Android/.test(navigator.userAgent);
+
+        // Links shared on social apps open in that app's own browser, which often
+        // refuses location outright -- or the host app was never granted it -- and the
+        // visitor sees a denial they never chose. None of that is fixable from here,
+        // so say so up front rather than after three permission prompts. `; wv)` is
+        // the generic Android WebView marker. Not exhaustive: some apps (X, Slack on
+        // iOS) use the system Safari view, which behaves like Safari and needs no warning.
+        const isInAppBrowser =
+            /FBAN|FBAV|FB_IAB|Instagram|LinkedInApp|Snapchat|TikTok|BytedanceWebview|musical_ly|Pinterest|Line\//i
+                .test(navigator.userAgent) ||
+            (isAndroid && /; wv\)/.test(navigator.userAgent));
+        const OPEN_IN_BROWSER_HINT = isIOS
+            ? 'You’re in an app’s built-in browser, which usually can’t share your location. ' +
+              'Tap ⋯ or the share icon and choose Open in Safari.'
+            : 'You’re in an app’s built-in browser, which usually can’t share your location. ' +
+              'Tap ⋮ and choose Open in Chrome (or your browser).';
+
         // Show start button on page load
         window.addEventListener('load', () => {
             // Raw sensor panel is opt-in for testing: append ?debug to the URL.
@@ -922,6 +943,7 @@
             loadingText.style.display = 'none';
             document.querySelector('.spinner').style.display = 'none';
             startBtn.style.display = 'block';
+            if (isInAppBrowser) permissionNote.textContent = OPEN_IN_BROWSER_HINT;
             permissionNote.style.display = 'block';
         });
 
@@ -985,7 +1007,7 @@
             // it died at rather than just that it died.
             let stage = 'motion';
             try {
-                track('start-tapped', { retry });
+                track('start-tapped', { retry, inApp: isInAppBrowser });
 
                 // Hide start button, show spinner and the progress/error line
                 startBtn.style.display = 'none';
@@ -1102,10 +1124,50 @@
                             lon: position.coords.longitude
                         });
                     },
-                    error => reject(error),
+                    error => reject(locationError(error)),
                     { enableHighAccuracy: true, timeout: 10000 }
                 );
             });
+        }
+
+        // The browser's own message ("User denied Geolocation") names the problem but
+        // not the fix, and the fix differs by cause: a denial is remembered, so Try
+        // Again can't undo it, while a timeout often just needs a second attempt.
+        //
+        // On iOS a denial can come from three places, and the visitor may well have
+        // tapped Allow on the one they saw: the per-site setting, the system-wide
+        // "Safari Websites" switch (which, set to Never, denies without ever showing
+        // a prompt), or Location Services being off entirely. Hence both paths below.
+        function locationError(error) {
+            let message;
+            if (error.code === 1) {
+                if (isInAppBrowser) {
+                    message = OPEN_IN_BROWSER_HINT;
+                } else if (isIOS) {
+                    message = 'Location access is blocked. In the Settings app: Privacy & ' +
+                        'Security → Location Services → make sure it’s on, and set ' +
+                        'Safari Websites to While Using the App. Then in Safari, tap aA → ' +
+                        'Website Settings → Location → Allow, and reload this page.';
+                } else if (isAndroid) {
+                    message = 'Location access is blocked. Make sure your phone’s location ' +
+                        'is on, then tap the icon left of the address → Permissions → ' +
+                        'Location → Allow, and reload this page.';
+                } else {
+                    message = 'Location access is blocked. Allow location for this site in ' +
+                        'your browser settings, then reload this page.';
+                }
+            } else if (error.code === 3) {
+                message = 'Finding your location took too long. Move near a window or ' +
+                    'outside and tap Try Again.';
+            } else {
+                message = 'Couldn’t find your location. Check that location is turned ' +
+                    'on for your phone and tap Try Again.';
+            }
+            const err = new Error(message);
+            // Keeps the analytics reason what it was before this wrapper existed --
+            // errorReason reads `name` first, and a plain Error's is just 'Error'.
+            err.name = `geo-code-${error.code}`;
+            return err;
         }
 
         // Handle device orientation changes
