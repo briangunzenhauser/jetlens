@@ -630,7 +630,7 @@
         </div>
         <p id="copyright">
             Built by <a href="https://briangunzenhauser.com" target="_blank" rel="noopener">Brian Gunzenhauser</a> with agentic AI<br>
-            Flight data from <a href="https://adsb.fi" target="_blank" rel="noopener">adsb.fi</a>
+            Flight data from <a href="https://adsb.fi" target="_blank" rel="noopener">adsb.fi</a> and <a href="https://adsb.lol" target="_blank" rel="noopener">adsb.lol</a>
         </p>
     </div>
 
@@ -718,6 +718,7 @@
         // 1 request/second, attribution with a link required -- it's on the start
         // screen. The rate limit is now shared across everyone using the app rather
         // than per-visitor, so the function caches and spaces its upstream calls.
+        // When adsb.fi refuses or fails, the function falls back to adsb.lol.
         const API_BASE = '/api/planes';
 
         // Request radius in nautical miles. MAX_DISTANCE below filters to 80km (~43nm)
@@ -1404,6 +1405,7 @@
         // setTimeout rather than setInterval: the next poll is only scheduled once this
         // one has resolved, so a slow upstream can never stack requests on top of itself.
         async function pollLoop() {
+            pollTimer = null;
             const ok = await fetchPlanes();
 
             if (ok) {
@@ -1413,8 +1415,35 @@
                 upstreamRetryHint = null;
             }
 
-            setTimeout(pollLoop, pollDelay);
+            // Went hidden mid-fetch: park here and let visibilitychange restart us.
+            if (document.hidden) {
+                pollPaused = true;
+                return;
+            }
+            pollTimer = setTimeout(pollLoop, pollDelay);
         }
+
+        // A shared link gets opened once and left in a background tab or on a locked
+        // phone, and every one of those would otherwise keep polling a sky nobody is
+        // looking at -- spending the upstream's shared 1 request/second on it. Polling
+        // stops while the page is hidden and resumes on return: straight away if the
+        // feed was healthy, since the sky is now stale, or after the pending backoff
+        // if it wasn't, so coming back can't be used to skip a Retry-After.
+        let pollTimer = null;
+        let pollPaused = false;
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                if (pollTimer) {
+                    clearTimeout(pollTimer);
+                    pollTimer = null;
+                    pollPaused = true;
+                }
+            } else if (pollPaused) {
+                pollPaused = false;
+                if (pollDelay === POLL_INTERVAL_MS) pollLoop();
+                else pollTimer = setTimeout(pollLoop, pollDelay);
+            }
+        });
 
         // Calculate bearing between two points
         function calculateBearing(lat1, lon1, lat2, lon2) {

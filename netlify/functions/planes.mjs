@@ -20,6 +20,14 @@
 
 const UPSTREAM = 'https://opendata.adsb.fi/api/v2';
 
+// Fallback for when adsb.fi refuses or fails, so one provider's rate limit or
+// outage doesn't blank the sky for everyone. Same v2 aircraft fields, already
+// under `ac`, and it answers datacenter IPs too. Fallback only, never primary:
+// its headers advertise 4/s, 60/min and just 500/day per IP, which steady
+// traffic would exhaust by mid-morning. Data is ODbL -- credited on the start
+// screen alongside adsb.fi.
+const FALLBACK = 'https://api.adsb.lol/v2';
+
 // adsb.fi allows 1 request/second and counts 4xx responses toward a limit that
 // earns a temporary IP ban. Every visitor's poll now arrives from this one
 // function rather than from their own phone, so the ceiling is shared: without
@@ -45,6 +53,14 @@ const CACHE_TTL_MS = 8000;
 // The browser itself must not cache, or it would never ask the edge again.
 const CDN_CACHE = 'public, durable, s-maxage=8, stale-while-revalidate=10';
 
+// In practice the Netlify cache above rarely hits: the durable layer reports
+// fwd=bypass and the per-node edge cache is spread too thin. jetlens.app sits
+// behind Cloudflare, which reads only this header (Netlify passes it through
+// untouched), and a Cache Rule there makes /api/planes eligible for caching.
+// Tiered Cache funnels its edge locations through one upper tier, so a busy grid
+// cell costs one upstream call per 8s however many people are looking at it.
+const CLOUDFLARE_CACHE = 'public, max-age=8, stale-while-revalidate=10';
+
 // Query coordinates are snapped to this grid before going upstream, so nearby
 // viewers share a cache entry instead of each cutting their own. It also means
 // adsb.fi never receives a visitor's exact position.
@@ -69,6 +85,25 @@ let nextUpstreamAt = 0;
 
 const snap = (n) => Math.round(n / GRID_DEG) * GRID_DEG;
 
+async function fetchUpstream(name, url) {
+    // Without a timeout a hung upstream would hold the function open until
+    // Netlify kills it, and the browser would sit on a stale sky meanwhile.
+    // 4s each so a primary timeout plus the fallback still fits in one poll.
+    const res = await fetch(url, {
+        signal: AbortSignal.timeout(4000),
+        headers: { 'User-Agent': 'JetLens (https://github.com/briangunzenhauser/jetlens)' }
+    });
+
+    if (!res.ok) {
+        const err = new Error(`${name} returned ${res.status}`);
+        err.status = res.status;
+        err.retryAfter = res.headers.get('Retry-After');
+        throw err;
+    }
+
+    return res.json();
+}
+
 // Only fresh upstream answers are edge-cacheable. Errors must not be, and nor
 // must a stale fallback, or the edge would keep serving it after recovery.
 const json = (status, body, cacheable = false, extraHeaders = {}) =>
@@ -77,7 +112,11 @@ const json = (status, body, cacheable = false, extraHeaders = {}) =>
         headers: {
             'Content-Type': 'application/json',
             ...(cacheable
-                ? { 'Cache-Control': 'public, max-age=0, must-revalidate', 'Netlify-CDN-Cache-Control': CDN_CACHE }
+                ? {
+                      'Cache-Control': 'public, max-age=0, must-revalidate',
+                      'Netlify-CDN-Cache-Control': CDN_CACHE,
+                      'Cloudflare-CDN-Cache-Control': CLOUDFLARE_CACHE
+                  }
                 : { 'Cache-Control': 'no-store' }),
             ...extraHeaders
         }
@@ -137,27 +176,31 @@ export default async (req) => {
         const wait = slot - Date.now();
         if (wait > 0) await new Promise((r) => setTimeout(r, wait));
 
-        // Without a timeout a hung upstream would hold the function open until
-        // Netlify kills it, and the browser would sit on a stale sky meanwhile.
-        const abort = AbortSignal.timeout(8000);
-        const res = await fetch(
-            `${UPSTREAM}/lat/${gridLat.toFixed(4)}/lon/${gridLon.toFixed(4)}/dist/${radius}`,
-            { signal: abort, headers: { 'User-Agent': 'JetLens (https://github.com/briangunzenhauser/jetlens)' } }
-        );
-
-        if (!res.ok) {
-            const err = new Error(`adsb.fi returned ${res.status}`);
-            err.status = res.status;
-            err.retryAfter = res.headers.get('Retry-After');
-            throw err;
+        let body;
+        try {
+            const data = await fetchUpstream(
+                'adsb.fi',
+                `${UPSTREAM}/lat/${gridLat.toFixed(4)}/lon/${gridLon.toFixed(4)}/dist/${radius}`
+            );
+            // adsb.fi returns the aircraft under `aircraft`; the v2 shape this app
+            // was written against calls it `ac`. Every field inside is identical,
+            // so normalizing the one key is the whole translation.
+            body = { ac: data.aircraft ?? data.ac ?? [], now: data.now };
+        } catch (primaryError) {
+            try {
+                const data = await fetchUpstream(
+                    'adsb.lol',
+                    `${FALLBACK}/point/${gridLat.toFixed(4)}/${gridLon.toFixed(4)}/${radius}`
+                );
+                // adsb.lol dates its answer in milliseconds, adsb.fi in seconds.
+                body = { ac: data.ac ?? [], now: data.now / 1000 };
+            } catch {
+                // Report the primary's failure: its 429 and Retry-After are what
+                // the browser's backoff is tuned around.
+                throw primaryError;
+            }
         }
 
-        const data = await res.json();
-
-        // adsb.fi returns the aircraft under `aircraft`; the v2 shape this app
-        // was written against calls it `ac`. Every field inside is identical,
-        // so normalizing the one key is the whole translation.
-        const body = { ac: data.aircraft ?? data.ac ?? [], now: data.now };
         cache.set(key, { at: Date.now(), body });
 
         // Entries are per-location and this instance may live for hours, so
