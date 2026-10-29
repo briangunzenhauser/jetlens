@@ -1127,7 +1127,7 @@
                 userLocation = await getUserLocation();
                 track('location-granted');
                 updateStatus();
-                watchFixesForLog();
+                watchLocation();
 
                 // Hide loading screen and hand off to the intro card
                 loading.classList.add('hidden');
@@ -1206,23 +1206,34 @@
                 (fix.altitude == null ? '' : `, alt ${Math.round(fix.altitude)}m`);
         }
 
-        // Debug only: keep watching the location so the log shows whether the single
-        // fix the app aims from was a coarse early one. Logged, not applied -- this is
-        // for diagnosing, and userLocation stays the first fix.
-        function watchFixesForLog() {
-            if (!debugMode || !navigator.geolocation) return;
+        // Fixes vaguer than this are only taken if they still beat the one in use.
+        // Indoors or on a cold start the browser can hand back cell-tower positions
+        // hundreds of metres out, and swapping a good fix for one of those would make
+        // things worse.
+        const LOCATION_MAX_ACCURACY_M = 100;
+
+        // Keep following the location after the first fix. That fix is often a coarse
+        // early one (±40m, sharpening to ±4m a few seconds later), and people walk or
+        // ride while using this: the first flight log drifted 1.5km from where the
+        // session started, which by itself put a plane 2km away more than 20° off.
+        // An aircraft overhead is close, so the viewer's own position matters as much
+        // as the plane's.
+        function watchLocation() {
+            if (!navigator.geolocation) return;
             navigator.geolocation.watchPosition(
                 position => {
                     const fix = describeFix(position);
-                    logEvent('fix', {
-                        ...fix,
-                        // How far this fix sits from the one in use, in metres.
-                        offsetM: userLocation
-                            ? round(calculateDistance(userLocation.lat, userLocation.lon,
-                                                      fix.lat, fix.lon) * 1000, 0)
-                            : null
-                    });
+                    const moved = calculateDistance(userLocation.lat, userLocation.lon,
+                                                    fix.lat, fix.lon) * 1000;
+                    const applied = fix.accuracy <= LOCATION_MAX_ACCURACY_M ||
+                                    fix.accuracy <= userLocation.accuracy;
+                    // offsetM: how far this fix sits from the one it replaces, metres.
+                    logEvent('fix', { ...fix, offsetM: round(moved, 0), applied });
                     showFix(fix);
+                    if (applied) {
+                        userLocation = fix;
+                        updateStatus();
+                    }
                 },
                 error => logEvent('fix-error', { code: error.code, message: error.message }),
                 { enableHighAccuracy: true }
@@ -1558,6 +1569,13 @@
         let pollPaused = false;
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
+                // iOS restarts the motion sensors when the page comes back, and alpha
+                // returns with a new arbitrary zero -- the first flight log showed the
+                // offset 110° different after a trip to the home screen. Measure
+                // afresh rather than aiming with the old one, which would otherwise
+                // stick when the compass is rated too poor to correct it.
+                alphaOffset = null;
+                alphaOffsetLevel = false;
                 if (pollTimer) {
                     clearTimeout(pollTimer);
                     pollTimer = null;
@@ -1751,8 +1769,27 @@
         // and rotating the whole sky.
         const LEVEL_ROLL_SIN = Math.sin(6 * Math.PI / 180);
 
-        // Past this pitch the camera's horizontal part is too small to give a bearing.
-        const MEASURABLE_PITCH_SIN = Math.sin(64 * Math.PI / 180);
+        // Past this pitch the compass reading no longer describes the camera. iOS
+        // reports the heading of whichever device axis is nearer horizontal, and once
+        // the camera tilts past ~45° that is the top edge -- pointing back over the
+        // viewer's head. Measured in the first flight log: compass vs camera bearing
+        // was within 10° below 40° of elevation, 43° out at 40-50°, and 140° out at
+        // 50-60°. This used to be 64°, so a phone held square at 55° re-measured the
+        // offset from the flipped reading and rotated the whole sky; markers for
+        // planes overhead went with it. Above this the gyro carries the bearing alone,
+        // which is what it is good at.
+        //
+        // Looking down is different: tilted face-up the top edge points forward, the
+        // same way as the camera, and the log showed agreement within 2° down to 50°.
+        // That is how people carry the phone between planes, so it is kept.
+        const MEASURABLE_UP_SIN = Math.sin(30 * Math.PI / 180);
+        const MEASURABLE_DOWN_SIN = Math.sin(50 * Math.PI / 180);
+
+        // iOS rates its own heading (webkitCompassAccuracy, degrees). Worse than this
+        // -- near a car or other metal the log showed ±35-41° -- a reading would drag
+        // a good offset off, so it is only used when there is no offset at all yet
+        // (including after the page was hidden; see the visibilitychange handler).
+        const MAX_COMPASS_ACCURACY_DEG = 25;
 
         // Smoothing per event, so magnetometer jitter doesn't shake the overlay.
         const OFFSET_SMOOTHING = 0.1;
@@ -1769,7 +1806,12 @@
             const right = apply(m, [1, 0, 0]);
             const up = apply(m, [0, 1, 0]);
 
-            if (Math.abs(forward[2]) > MEASURABLE_PITCH_SIN) return;
+            if (forward[2] > MEASURABLE_UP_SIN || forward[2] < -MEASURABLE_DOWN_SIN) return;
+
+            // Negative accuracy means iOS has no estimate, which is no better.
+            const unreliable = compassAccuracy !== null &&
+                (compassAccuracy < 0 || compassAccuracy > MAX_COMPASS_ACCURACY_DEG);
+            if (unreliable && alphaOffset !== null) return;
 
             // Top of the phone below the horizon means it is upside down, where the
             // possible meanings of the compass reading disagree by 180°.
