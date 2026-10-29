@@ -262,6 +262,22 @@
             max-width: 300px;
         }
         #debug[hidden] { display: none; }
+        #debug .debug-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        #debug button {
+            flex: 1;
+            padding: 8px 10px;
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.12);
+            color: inherit;
+            font: inherit;
+            font-weight: 600;
+        }
+        #debug button:active { background: rgba(255, 255, 255, 0.3); }
 
         :root {
             /* Brilliant daytime-sky blues. Deliberately warmer and more cyan than
@@ -660,6 +676,12 @@
         <div>Gamma: <span id="debug-gamma">0</span>°</div>
         <div>Pitch: <span id="debug-pitch">0</span>°</div>
         <div>Visible: <span id="debug-visible">0</span></div>
+        <div>Fix: <span id="debug-fix">—</span></div>
+        <div>Log: <span id="debug-log">0</span> events, <span id="debug-marks">0</span> marks</div>
+        <div class="debug-actions">
+            <button id="debug-mark" type="button">Mark</button>
+            <button id="debug-save" type="button">Save log</button>
+        </div>
     </div>
 
     <div id="info-panel">
@@ -876,6 +898,8 @@
         let userLocation = null;
         let deviceOrientation = { alpha: 0, beta: 0, gamma: 0 };
         let compassHeading = null;  // true-north heading in degrees, or null if unknown
+        let compassAccuracy = null; // iOS only: magnetometer's own error estimate, degrees
+        let orientationAbsolute = null;
         let planes = [];
         let markers = {};
         let selectedPlane = null;
@@ -925,11 +949,40 @@
             : 'You’re in an app’s built-in browser, which usually can’t share your location. ' +
               'Tap ⋮ and choose Open in Chrome (or your browser).';
 
+        // Raw sensor panel and flight recorder are opt-in for testing: append ?debug
+        // to the URL.
+        const debugMode = new URLSearchParams(location.search).has('debug');
+
+        // Flight recorder. Overhead misses can come from the compass, the location
+        // fix, stale plane data or the altitude model, and from the phone they all
+        // look the same: no pill. This keeps enough of each to tell them apart
+        // afterwards -- sensor state and per-plane geometry a few times a second,
+        // every poll and location fix, and "Mark" taps recording where a real plane
+        // actually was. Save log exports it as JSON.
+        const FLIGHT_LOG_WINDOW_MS = 15 * 60 * 1000;
+        const FLIGHT_LOG_FRAME_EVERY = 3;  // marker ticks per logged frame: 100ms * 3 ≈ 3Hz
+        const flightLog = [];
+        let flightLogTick = 0;
+        let markCount = 0;
+
+        function logEvent(type, data) {
+            if (!debugMode) return;
+            const t = Date.now();
+            flightLog.push({ t, type, ...data });
+            while (flightLog.length && flightLog[0].t < t - FLIGHT_LOG_WINDOW_MS) {
+                flightLog.shift();
+            }
+        }
+
+        const round = (x, places = 2) =>
+            typeof x === 'number' && Number.isFinite(x) ? +x.toFixed(places) : x ?? null;
+
         // Show start button on page load
         window.addEventListener('load', () => {
-            // Raw sensor panel is opt-in for testing: append ?debug to the URL.
-            if (new URLSearchParams(location.search).has('debug')) {
+            if (debugMode) {
                 document.getElementById('debug').hidden = false;
+                document.getElementById('debug-mark').addEventListener('click', markCrosshair);
+                document.getElementById('debug-save').addEventListener('click', saveFlightLog);
             }
 
             if (previewMode === 'intro') {
@@ -1074,6 +1127,7 @@
                 userLocation = await getUserLocation();
                 track('location-granted');
                 updateStatus();
+                watchFixesForLog();
 
                 // Hide loading screen and hand off to the intro card
                 loading.classList.add('hidden');
@@ -1120,15 +1174,59 @@
 
                 navigator.geolocation.getCurrentPosition(
                     position => {
-                        resolve({
-                            lat: position.coords.latitude,
-                            lon: position.coords.longitude
-                        });
+                        const fix = describeFix(position);
+                        logEvent('fix', { first: true, ...fix });
+                        showFix(fix);
+                        resolve(fix);
                     },
                     error => reject(locationError(error)),
                     { enableHighAccuracy: true, timeout: 10000 }
                 );
             });
+        }
+
+        // lat/lon are what the app uses; the rest is for the flight recorder. accuracy
+        // is the radius in metres the browser vouches for, and at a plane 2km away
+        // every 100m of it is about 3° of sky.
+        function describeFix(position) {
+            const c = position.coords;
+            return {
+                lat: c.latitude,
+                lon: c.longitude,
+                accuracy: c.accuracy,
+                altitude: c.altitude,
+                altitudeAccuracy: c.altitudeAccuracy
+            };
+        }
+
+        function showFix(fix) {
+            if (!debugMode) return;
+            document.getElementById('debug-fix').textContent =
+                `±${Math.round(fix.accuracy)}m` +
+                (fix.altitude == null ? '' : `, alt ${Math.round(fix.altitude)}m`);
+        }
+
+        // Debug only: keep watching the location so the log shows whether the single
+        // fix the app aims from was a coarse early one. Logged, not applied -- this is
+        // for diagnosing, and userLocation stays the first fix.
+        function watchFixesForLog() {
+            if (!debugMode || !navigator.geolocation) return;
+            navigator.geolocation.watchPosition(
+                position => {
+                    const fix = describeFix(position);
+                    logEvent('fix', {
+                        ...fix,
+                        // How far this fix sits from the one in use, in metres.
+                        offsetM: userLocation
+                            ? round(calculateDistance(userLocation.lat, userLocation.lon,
+                                                      fix.lat, fix.lon) * 1000, 0)
+                            : null
+                    });
+                    showFix(fix);
+                },
+                error => logEvent('fix-error', { code: error.code, message: error.message }),
+                { enableHighAccuracy: true }
+            );
         }
 
         // The browser's own message ("User denied Geolocation") names the problem but
@@ -1178,6 +1276,9 @@
                 beta: event.beta || 0,    // Front-to-back tilt (-180 to 180)
                 gamma: event.gamma || 0   // Left-to-right tilt (-90 to 90)
             };
+            compassAccuracy = typeof event.webkitCompassAccuracy === 'number'
+                ? event.webkitCompassAccuracy : null;
+            orientationAbsolute = event.absolute ?? null;
 
             // alpha is not a compass bearing. It rotates counter-clockwise, and on a
             // non-absolute event its zero point is wherever the device happened to be
@@ -1342,10 +1443,11 @@
                         // baro_rate is missing more often than not; geom_rate covers
                         // most of the rest.
                         const rate = ac.baro_rate ?? ac.geom_rate ?? null;
+                        const callsign = ac.flight ? ac.flight.trim() : 'N/A';
 
                         return {
                             icao24: ac.hex,
-                            callsign: ac.flight ? ac.flight.trim() : 'N/A',
+                            callsign,
                             operator: ac.ownOp || null,
                             registration: ac.r || null,
                             aircraft_type: ac.t || null,
@@ -1359,15 +1461,34 @@
                             on_ground: onGround,
                             // When this fix was received, so markers can be dead-reckoned
                             // forward between polls instead of freezing. See extrapolatePlane.
-                            fetchedAt: Date.now() - ageMs
+                            fetchedAt: Date.now() - ageMs,
+                            // For the flight recorder. type says how the position was
+                            // got (adsb_icao is the aircraft's own GPS; mlat is
+                            // triangulated and noisier). seen_pos is how many seconds
+                            // old the position already was when the feed answered.
+                            carrier: isMajorCarrier(callsign),
+                            posSource: ac.type ?? null,
+                            seenPos: ac.seen_pos ?? null
                         };
                     }).filter(plane =>
                         plane.latitude &&
                         plane.longitude &&
                         !plane.on_ground &&
                         plane.baro_altitude > MIN_ALTITUDE &&
-                        isMajorCarrier(plane.callsign)
+                        // While testing, every aircraft is welcome: more traffic
+                        // overhead means more to Mark. `carrier` keeps them separable.
+                        (debugMode || plane.carrier)
                     );
+
+                    logEvent('poll', {
+                        status: response.status,
+                        ageS: ageMs / 1000,
+                        // The feed's own timestamp for this snapshot (seconds), when
+                        // it sends one: the truest measure of how stale positions are.
+                        feedNow: typeof data.now === 'number' ? data.now : null,
+                        raw: data.ac.length,
+                        kept: planes.length
+                    });
 
                     planeCountEl.textContent = compassHeading === null
                         ? `✈️ ${planes.length} planes — no compass signal`
@@ -1390,6 +1511,10 @@
                 return true;
             } catch (error) {
                 console.error('Error fetching planes:', error);
+                logEvent('poll-error', {
+                    status: error.status ?? null,
+                    message: String(error.message || '').slice(0, 100)
+                });
                 planeCountEl.textContent = '✈️ Error loading planes';
                 if (!trackedFetchError) {
                     trackedFetchError = true;
@@ -1838,12 +1963,18 @@
 
         // Update plane markers on screen
         function updateMarkers() {
-            if (!userLocation || planes.length === 0) return;
+            // An empty sky still runs the pass: there are no markers to place, but the
+            // flight recorder wants the sensor frames regardless.
+            if (!userLocation) return;
 
             const now = Date.now();
 
             // Track which markers are still visible
             const visibleMarkers = new Set();
+
+            // Every plane close and high enough to be a candidate, with where it was
+            // computed to be. The flight recorder reads this rather than redoing it.
+            const candidates = [];
 
             planes.forEach(plane => {
                 const pos = extrapolatePlane(plane, now);
@@ -1867,17 +1998,21 @@
                 // 3. Must be in field of view
                 const MAX_DISTANCE = 80; // km
                 const MIN_ELEVATION = 5; // degrees above horizon
-                
-                if (distance < MAX_DISTANCE && 
-                    elevation > MIN_ELEVATION && 
-                    isInFieldOfView(bearing, elevation)) {
-                    
-                    const position = planeToScreenPosition(bearing, elevation);
-                    
+
+                if (distance >= MAX_DISTANCE || elevation <= MIN_ELEVATION) return;
+
+                const inFov = isInFieldOfView(bearing, elevation);
+                let onScreen = false;
+                let position = null;
+
+                if (inFov) {
+                    position = planeToScreenPosition(bearing, elevation);
+
                     // Only show if position is actually on screen
-                    if (position.x >= 0 && position.x <= window.innerWidth &&
-                        position.y >= 0 && position.y <= window.innerHeight) {
-                        
+                    onScreen = position.x >= 0 && position.x <= window.innerWidth &&
+                               position.y >= 0 && position.y <= window.innerHeight;
+
+                    if (onScreen) {
                         // Create or update marker
                         if (!markers[plane.icao24]) {
                             const marker = createMarker(plane);
@@ -1892,6 +2027,12 @@
                         visibleMarkers.add(plane.icao24);
                     }
                 }
+
+                if (debugMode) {
+                    candidates.push({
+                        plane, pos, bearing, distance, elevation, inFov, onScreen, position
+                    });
+                }
             });
 
             // Hide markers that are out of view
@@ -1903,6 +2044,119 @@
             
             // Update debug display with visible count
             document.getElementById('debug-visible').textContent = visibleMarkers.size;
+
+            lastCandidates = candidates;
+            if (debugMode && ++flightLogTick % FLIGHT_LOG_FRAME_EVERY === 0) {
+                logEvent('frame', { ...cameraState(), planes: candidates.map(describeCandidate) });
+                document.getElementById('debug-log').textContent = flightLog.length;
+            }
+        }
+
+        // The latest updateMarkers pass, for Mark to search without recomputing.
+        let lastCandidates = [];
+
+        // Raw sensors plus where they say the camera points. azimuth/pitch/roll are
+        // derived from the corrected matrix, so comparing them against the raw angles
+        // and compassHeading shows which input went wrong.
+        function cameraState() {
+            const { forward, right } = cameraBasis();
+            const { halfAcross, halfDown } = fieldOfView();
+            const deg = 180 / Math.PI;
+            return {
+                alpha: round(deviceOrientation.alpha),
+                beta: round(deviceOrientation.beta),
+                gamma: round(deviceOrientation.gamma),
+                compass: round(compassHeading),
+                compassAcc: round(compassAccuracy),
+                absolute: orientationAbsolute,
+                alphaOffset: round(alphaOffset),
+                offsetLevel: alphaOffsetLevel,
+                camAz: round((Math.atan2(forward[0], forward[1]) * deg + 360) % 360),
+                camEl: round(Math.asin(Math.max(-1, Math.min(1, forward[2]))) * deg),
+                // Tilt of the screen's horizontal axis out of level.
+                roll: round(Math.asin(Math.max(-1, Math.min(1, right[2]))) * deg),
+                halfAcross: round(halfAcross * deg),
+                halfDown: round(halfDown * deg)
+            };
+        }
+
+        // One candidate plane in a log frame. offX/offY are degrees right/up of the
+        // crosshair (null when behind the camera); fromCentre is the straight angle
+        // between the crosshair and the plane, which stays meaningful even then.
+        function describeCandidate(c) {
+            const offset = angularOffset(c.bearing, c.elevation);
+            const p = toVector(c.bearing, c.elevation);
+            const fromCentre = Math.acos(Math.max(-1, Math.min(1, dot(p, cameraBasis().forward))));
+            return {
+                icao: c.plane.icao24,
+                cs: c.plane.callsign,
+                lat: round(c.pos.lat, 5),
+                lon: round(c.pos.lon, 5),
+                altM: round(c.pos.alt, 0),
+                speed: round(c.plane.velocity, 0),
+                track: round(c.plane.true_track, 0),
+                ageS: round((Date.now() - c.plane.fetchedAt) / 1000, 1),
+                seenPos: round(c.plane.seenPos, 1),
+                posSource: c.plane.posSource,
+                carrier: c.plane.carrier,
+                bearing: round(c.bearing),
+                elevation: round(c.elevation),
+                distKm: round(c.distance),
+                offX: offset ? round(offset.x) : null,
+                offY: offset ? round(offset.y) : null,
+                fromCentre: round(fromCentre * 180 / Math.PI),
+                inFov: c.inFov,
+                onScreen: c.onScreen
+            };
+        }
+
+        // Ground truth: the user has a real plane in the crosshair. Record where the
+        // camera points and the predicted planes nearest it -- the gap between them is
+        // the error the app is making, at this elevation, right now.
+        function markCrosshair() {
+            const nearest = lastCandidates
+                .map(describeCandidate)
+                .sort((a, b) => a.fromCentre - b.fromCentre)
+                .slice(0, 3);
+            logEvent('mark', { ...cameraState(), nearest });
+            document.getElementById('debug-marks').textContent = ++markCount;
+            document.getElementById('debug-log').textContent = flightLog.length;
+        }
+
+        // Export the log. The share sheet is the way off an iPhone (AirDrop, Files,
+        // Mail); a plain download covers desktop browsers.
+        async function saveFlightLog() {
+            const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            const name = `jetlens-log-${stamp}.json`;
+            const body = JSON.stringify({
+                meta: {
+                    savedAt: new Date().toISOString(),
+                    userAgent: navigator.userAgent,
+                    screen: { width: window.innerWidth, height: window.innerHeight },
+                    video: { width: video.videoWidth, height: video.videoHeight },
+                    cameraFovLong: CAMERA_FOV_LONG,
+                    location: userLocation
+                },
+                events: flightLog
+            });
+            const file = new File([body], name, { type: 'application/json' });
+
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                try {
+                    await navigator.share({ files: [file] });
+                    return;
+                } catch (error) {
+                    // Dismissing the sheet is a choice, not a reason to download.
+                    if (error.name === 'AbortError') return;
+                }
+            }
+
+            const url = URL.createObjectURL(file);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = name;
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
         }
 
         // Create a plane marker element
