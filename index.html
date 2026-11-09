@@ -166,6 +166,18 @@
             display: none;
         }
 
+        /* AeroDataBox's free plan requires a visible credit with a working link,
+           shown wherever its data is. Only appears when it supplied the route. */
+        .route-credit {
+            margin-top: 12px;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.55);
+        }
+
+        .route-credit a {
+            color: inherit;
+        }
+
         #close-btn {
             position: absolute;
             top: 24px;
@@ -700,6 +712,10 @@
         <div class="info-row">
             <span class="info-label">Aircraft</span>
             <span class="info-value" id="aircraft-type">-</span>
+        </div>
+        <!-- No rel="noreferrer": AeroDataBox's terms forbid suppressing the referrer. -->
+        <div class="route-credit" id="route-credit" hidden>
+            Route data: <a href="https://aerodatabox.com/" target="_blank" rel="noopener">AeroDataBox</a>
         </div>
     </div>
 
@@ -2282,45 +2298,141 @@
                     }
                     return null;
                 }
-                const [origin, destination] = leg;
-                // The route file names the city and country but not the state/region,
-                // so pull that from hexdb (cached) and stitch the three together for
-                // the small line under each airport. hexdb is the flakier of the two
-                // hosts, but it only decorates the sub-line -- the airport names above
-                // it are already in hand, and a timed-out region just drops that piece.
-                const [originRegion, destRegion] = await Promise.all([
-                    getAirportRegion(origin.icao),
-                    getAirportRegion(destination.icao),
-                ]);
-                return {
-                    // The route names the operating carrier as an ICAO code only;
-                    // CARRIERS turns it into a friendly name, falling back to the
-                    // code itself for anything not in the allowlist.
-                    airline: CARRIERS.get(route.airline_code) || route.airline_code,
-                    origin: origin.name || origin.iata,
-                    destination: destination.name || destination.iata,
-                    originSub: subLocation(origin, originRegion),
-                    destinationSub: subLocation(destination, destRegion),
-                    source: 'vrs',
-                };
+                return describeLeg(leg[0], leg[1], route.airline_code, 'vrs');
             } catch (error) {
                 console.log('vrs-standing-data lookup failed:', error);
                 return null;
             }
         }
 
+        // Turn one leg into what the panel shows. Both route sources hand over
+        // airports in the same shape (name, iata, icao, location, countryiso2).
+        async function describeLeg(origin, destination, airlineCode, source) {
+            // Neither source gives the state/region, so pull that from hexdb (cached)
+            // and stitch it in for the small line under each airport. hexdb is the
+            // flakiest host here, but it only decorates the sub-line -- the airport
+            // names are already in hand, and a timed-out region just drops that piece.
+            const [originRegion, destRegion] = await Promise.all([
+                getAirportRegion(origin.icao),
+                getAirportRegion(destination.icao),
+            ]);
+            return {
+                // Routes name the operating carrier as an ICAO code only; CARRIERS
+                // turns it into a friendly name, falling back to the code itself
+                // for anything not in the allowlist.
+                airline: airlineCode ? CARRIERS.get(airlineCode) || airlineCode : null,
+                origin: origin.name || origin.iata,
+                destination: destination.name || destination.iata,
+                originSub: subLocation(origin, originRegion),
+                destinationSub: subLocation(destination, destRegion),
+                source,
+            };
+        }
+
+        // AeroDataBox status words that mean the plane is in the air. It also lags:
+        // a plane minutes after takeoff is often still "Expected", so a leg whose
+        // departure time has passed and whose arrival hasn't counts as well.
+        const AIRBORNE_STATUS = /^(EnRoute|Departed|Approaching)$/i;
+        const NOT_FLYING_STATUS = /^(Arrived|Canceled|CanceledUncertain)$/i;
+        // Arrivals run late; keep a leg in play this long past its arrival time.
+        const ARRIVAL_SLACK_MS = 60 * 60 * 1000;
+
+        // Of an airframe's legs for the day, the one it is flying now: airborne by
+        // status or by the clock, and -- whenever the airports' coordinates are
+        // known -- passing the same corridor test as the free route.
+        function airborneLeg(plane, legs) {
+            const now = Date.now();
+            return legs.find(leg => {
+                if (NOT_FLYING_STATUS.test(leg.status || '')) return false;
+                const saysAirborne = AIRBORNE_STATUS.test(leg.status || '');
+                const byClock = leg.departs != null && leg.departs <= now &&
+                    (leg.arrives == null || now <= leg.arrives + ARRIVAL_SLACK_MS);
+                if (!saysAirborne && !byClock) return false;
+                const located = leg.origin.lat != null && leg.destination.lat != null;
+                // Without coordinates there's nothing to check the clock against, so
+                // only AeroDataBox's own "in the air" status is trusted then.
+                return located ? legMatchesPosition(plane, leg.origin, leg.destination)
+                               : saysAirborne;
+            }) || null;
+        }
+
+        // A route from our /api/route function (AeroDataBox). Its allowance is ~200
+        // lookups a month, which the function paces across the billing cycle:
+        // mode 'first' (asked before the free route is known) is only spent while
+        // the cycle is on pace, and declined with 'ahead-of-pace' otherwise; mode
+        // 'fallback' (the free route already failed) spends up to the cap.
+        // Resolves to { info, reason } -- info is the panel's route, or null.
+        async function fetchAeroDataBox(plane, mode) {
+            let reason;
+            try {
+                const response = await fetchWithTimeout(
+                    `/api/route?hex=${encodeURIComponent(plane.icao24)}&mode=${mode}`, 8000);
+                if (!response.ok) return { info: null, reason: `http-${response.status}` };
+                const body = await response.json();
+                if (!body.legs) {
+                    reason = body.reason;
+                    if (reason === 'cap') track('route-cap-reached');
+                } else {
+                    const leg = airborneLeg(plane, body.legs);
+                    reason = leg ? 'matched' : 'no-airborne-leg';
+                    logEvent('route-aerodatabox', {
+                        hex: plane.icao24, cs: plane.callsign, mode, result: reason,
+                        legs: body.legs.map(l => `${l.origin.icao}-${l.destination.icao} ${l.status}`),
+                    });
+                    if (leg) {
+                        // The leg's own callsign beats the feed's, which can be blank.
+                        const code = (leg.callsign || plane.callsign || '')
+                            .replace(/\s+/g, '').slice(0, 3);
+                        return {
+                            info: await describeLeg(leg.origin, leg.destination, code, 'aerodatabox'),
+                            reason,
+                        };
+                    }
+                    return { info: null, reason };
+                }
+            } catch (error) {
+                console.log('aerodatabox route lookup failed:', error);
+                reason = 'error';
+            }
+            logEvent('route-aerodatabox', { hex: plane.icao24, cs: plane.callsign, mode, result: reason });
+            return { info: null, reason };
+        }
+
+        // The route for one tap. Airline flights ask AeroDataBox and the free route
+        // file at the same time and prefer AeroDataBox, which knows what this
+        // airframe is flying today; the free file lists one route per flight number
+        // and is often stale. If AeroDataBox declined only to stay on budget and the
+        // free route doesn't fit either, ask again as a fallback. Non-airline
+        // flights (charter, private) use the free file only: AeroDataBox rarely has
+        // them, and they'd spend the allowance for nothing.
+        async function fetchBestRoute(plane, cs) {
+            const free = cs ? fetchRoute(plane, cs) : Promise.resolve(null);
+            if (!cs || !isMajorCarrier(cs)) return free;
+
+            const paced = await fetchAeroDataBox(plane, 'first');
+            if (paced.info) return paced.info;
+            const freeRoute = await free;
+            if (freeRoute) return freeRoute;
+            // Any other reason (no airborne leg, cap reached, error) would only get
+            // the same answer again.
+            if (paced.reason === 'ahead-of-pace') {
+                return (await fetchAeroDataBox(plane, 'fallback')).info;
+            }
+            return null;
+        }
+
         async function getRouteInfo(plane) {
             const callsign = plane.callsign;
             const cs = callsign && callsign !== 'N/A' ? callsign.trim() : null;
 
-            // hexdb gives the airframe; vrs-standing-data gives the route. They answer
+            // hexdb gives the airframe; fetchBestRoute gives the route. They answer
             // different questions, so query both rather than treating one as a fallback
             // -- and query them at the same time, because neither needs the other's
             // answer. Run in series, an outage at one host delayed the other's result
             // for no reason; the route is what the panel is actually waiting on.
             const [airframe, route] = await Promise.all([
                 fetchAirframe(plane.icao24),
-                cs ? fetchRoute(plane, cs) : null,
+                fetchBestRoute(plane, cs),
             ]);
 
             if (!airframe && !route) return null;
@@ -2398,6 +2510,7 @@
             
             setLocation('origin', 'Loading...', '');
             setLocation('destination', 'Loading...', '');
+            document.getElementById('route-credit').hidden = true;
             document.getElementById('aircraft-type').textContent = plane.icao24.toUpperCase();
             
             infoPanel.classList.add('active');
@@ -2428,6 +2541,8 @@
                 // name and hides the sub line.
                 setLocation('origin', routeInfo.origin, routeInfo.originSub);
                 setLocation('destination', routeInfo.destination, routeInfo.destinationSub);
+                document.getElementById('route-credit').hidden =
+                    !routeInfo.source.includes('aerodatabox');
 
                 if (routeInfo.type) {
                     document.getElementById('aircraft-type').textContent = routeInfo.type;
