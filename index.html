@@ -2173,6 +2173,12 @@
         // while mismatched ones start at 1542 km, so anywhere in that gap works.
         const ROUTE_CORRIDOR_KM = 400;
 
+        // A plane on a leg flies roughly along it; one going the other way is on the
+        // return leg. 90° is generous enough for airways that zigzag and for weather
+        // deviations. Within this distance of either airport the check is skipped.
+        const ROUTE_HEADING_TOLERANCE_DEG = 90;
+        const ROUTE_TERMINAL_KM = 50;
+
         // Unit vector for a point on the globe, for the corridor test below.
         function geoVector(lat, lon) {
             const la = lat * Math.PI / 180;
@@ -2223,7 +2229,29 @@
             if (dot(cross(o, projected), normal) < 0) along = -along; // behind the origin
             const segment = Math.acos(clamp(dot(o, d))) * EARTH_RADIUS_KM;
 
-            return along > -ROUTE_CORRIDOR_KM && along < segment + ROUTE_CORRIDOR_KM;
+            if (!(along > -ROUTE_CORRIDOR_KM && along < segment + ROUTE_CORRIDOR_KM)) {
+                return false;
+            }
+
+            // The corridor has no direction, so the return leg passes too. UAL2289 files
+            // ATL-EWR-AUS; on 2026-11-10 it was heading 238° over Lancaster on EWR-AUS,
+            // but ATL-EWR came first in the list and covers the same stretch, so the
+            // panel said Atlanta -> Newark. Compare the plane's track with the leg's
+            // course at the plane's point. Near either airport, departure turns and
+            // approach vectors can point anywhere, so skip the check there.
+            if (plane.true_track == null) return true;
+            // Straight-line distance to each airport, not distance along the route: a
+            // plane well off to the side of an airport can still project onto the
+            // route right next to it.
+            const fromOrigin = Math.acos(clamp(dot(o, p))) * EARTH_RADIUS_KM;
+            const fromDestination = Math.acos(clamp(dot(d, p))) * EARTH_RADIUS_KM;
+            if (Math.min(fromOrigin, fromDestination) < ROUTE_TERMINAL_KM) return true;
+            const east = normalize(cross([0, 0, 1], projected));
+            const north = cross(projected, east);
+            const ahead = cross(normal, projected); // direction of travel, origin -> destination
+            const course = Math.atan2(dot(ahead, east), dot(ahead, north)) * 180 / Math.PI;
+            const diff = Math.abs(((plane.true_track - course) % 360 + 540) % 360 - 180);
+            return diff <= ROUTE_HEADING_TOLERANCE_DEG;
         }
 
         // A route may be multi-leg (e.g. ORD-LAX-ORD lands as three stops). Return the
