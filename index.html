@@ -908,6 +908,9 @@
         let planes = [];
         let markers = {};
         let selectedPlane = null;
+        // Whether the last poll succeeded. Until then the count keeps its
+        // "Searching" or error text instead of claiming zero planes.
+        let planeFeedOk = false;
 
         // DOM elements
         const video = document.getElementById('video');
@@ -1505,9 +1508,9 @@
                         kept: planes.length
                     });
 
-                    planeCountEl.textContent = compassHeading === null
-                        ? `✈️ ${planes.length} planes — no compass signal`
-                        : `✈️ Tracking ${planes.length} planes`;
+                    // The count itself is written by updateMarkers, so it matches the
+                    // pills on screen rather than everything the feed returned.
+                    planeFeedOk = true;
 
                     if (!trackedFirstFetch) {
                         trackedFirstFetch = true;
@@ -1530,6 +1533,7 @@
                     status: error.status ?? null,
                     message: String(error.message || '').slice(0, 100)
                 });
+                planeFeedOk = false;
                 planeCountEl.textContent = '✈️ Error loading planes';
                 if (!trackedFetchError) {
                     trackedFetchError = true;
@@ -2029,6 +2033,17 @@
             
             // Update debug display with visible count
             document.getElementById('debug-visible').textContent = visibleMarkers.size;
+
+            // The headline count is the pills on screen, not the feed total: a
+            // number that disagrees with what you can see reads as a bug.
+            if (planeFeedOk) {
+                const n = visibleMarkers.size;
+                const text = compassHeading === null
+                    ? '✈️ No compass signal'
+                    : `✈️ Tracking ${n} ${n === 1 ? 'plane' : 'planes'}`;
+                // Runs ~10 times a second; only touch the DOM on a change.
+                if (planeCountEl.textContent !== text) planeCountEl.textContent = text;
+            }
 
             lastCandidates = candidates;
             if (debugMode && ++flightLogTick % FLIGHT_LOG_FRAME_EVERY === 0) {
