@@ -131,7 +131,12 @@
             color: #FFFFFF;
         }
         #filter-tab[hidden] { display: none; }
+        /* Laid out like #heading-pill (same padding, flex on the baseline) so the
+           two bottom pills match in height. The zero-width strut at the heading's
+           20px size gives this pill the same line box as its big direction letter. */
         #filter-toggle {
+            display: flex;
+            align-items: baseline;
             background: rgba(0, 0, 0, 0.6);
             backdrop-filter: blur(10px);
             border: none;
@@ -139,9 +144,23 @@
             font: inherit;
             font-size: 14px;
             font-weight: 600;
+            line-height: normal;
             padding: 10px 16px;
             border-radius: 999px;
         }
+        #filter-toggle::before {
+            content: '\200B';
+            font-size: 20px;
+            font-weight: 700;
+        }
+        /* While the list is open, a clear layer over the whole screen takes the tap
+           that closes it, so that tap can't also open a plane's card underneath. */
+        #filter-backdrop {
+            position: fixed;
+            inset: 0;
+            z-index: 99;
+        }
+        #filter-backdrop[hidden] { display: none; }
         #filter-list {
             background: rgba(0, 0, 0, 0.85);
             backdrop-filter: blur(10px);
@@ -752,6 +771,7 @@
     </div>
 
     <!-- Experimental: which kinds of aircraft get pills. Shown only with ?tab. -->
+    <div id="filter-backdrop" hidden></div>
     <div id="filter-tab" hidden>
         <div id="filter-list" hidden></div>
         <button id="filter-toggle" type="button" aria-expanded="false" aria-controls="filter-list">Show ▴</button>
@@ -1164,10 +1184,18 @@
                 list.appendChild(label);
             }
 
-            toggle.addEventListener('click', () => {
-                list.hidden = !list.hidden;
-                toggle.setAttribute('aria-expanded', String(!list.hidden));
-                toggle.textContent = list.hidden ? 'Show ▴' : 'Show ▾';
+            // Behaves like a small modal: a tap anywhere outside, or Escape, closes it.
+            const backdrop = document.getElementById('filter-backdrop');
+            const setOpen = open => {
+                list.hidden = !open;
+                backdrop.hidden = !open;
+                toggle.setAttribute('aria-expanded', String(open));
+                toggle.textContent = open ? 'Show ▾' : 'Show ▴';
+            };
+            toggle.addEventListener('click', () => setOpen(list.hidden));
+            backdrop.addEventListener('click', () => setOpen(false));
+            document.addEventListener('keydown', event => {
+                if (event.key === 'Escape' && !list.hidden) setOpen(false);
             });
         }
 
