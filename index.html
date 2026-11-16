@@ -131,12 +131,12 @@
             color: #FFFFFF;
         }
         #filter-tab[hidden] { display: none; }
-        /* Laid out like #heading-pill (same padding, flex on the baseline) so the
-           two bottom pills match in height. The zero-width strut at the heading's
-           20px size gives this pill the same line box as its big direction letter. */
+        /* Same fixed height and centring as #heading-pill, so the two bottom pills
+           match and their text sits in the middle. */
         #filter-toggle {
             display: flex;
-            align-items: baseline;
+            align-items: center;
+            height: var(--bottom-pill-height);
             background: rgba(0, 0, 0, 0.6);
             backdrop-filter: blur(10px);
             border: none;
@@ -144,14 +144,9 @@
             font: inherit;
             font-size: 14px;
             font-weight: 600;
-            line-height: normal;
-            padding: 10px 16px;
+            line-height: 1;
+            padding: 0 16px;
             border-radius: 999px;
-        }
-        #filter-toggle::before {
-            content: '\200B';
-            font-size: 20px;
-            font-weight: 700;
         }
         /* While the list is open, a clear layer over the whole screen takes the tap
            that closes it, so that tap can't also open a plane's card underneath. */
@@ -189,7 +184,10 @@
             font-variant-numeric: tabular-nums;
         }
 
+        /* Above the bottom pills, filter tab and debug panel (all z-index 100),
+           which otherwise showed through the card. */
         #info-panel {
+            z-index: 200;
             position: fixed;
             bottom: 0;
             left: 0;
@@ -314,15 +312,22 @@
 
         /* The heading the phone is facing, in plain compass terms. This is the only
            orientation readout end users see; the raw sensor panel below is dev-only. */
+        /* Fixed height with centred items rather than padding around a baseline
+           row: on a baseline row the descender space below the text left the
+           letters sitting high. line-height 1 makes each item's box its own font
+           size, so centring the boxes centres the letters. */
+        :root { --bottom-pill-height: 44px; }
         #heading-pill {
             position: fixed;
             bottom: 20px;
             left: 20px;
             display: flex;
-            align-items: baseline;
+            align-items: center;
+            height: var(--bottom-pill-height);
+            line-height: 1;
             gap: 8px;
             background: rgba(0, 0, 0, 0.6);
-            padding: 10px 16px;
+            padding: 0 16px;
             border-radius: 999px;
             z-index: 100;
             backdrop-filter: blur(10px);
