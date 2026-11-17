@@ -131,8 +131,7 @@
             color: #FFFFFF;
         }
         #filter-tab[hidden] { display: none; }
-        /* Same fixed height and centring as #heading-pill, so the two bottom pills
-           match and their text sits in the middle. */
+        /* Fixed height and centred text; see --bottom-pill-height. */
         #filter-toggle {
             display: flex;
             align-items: center;
@@ -310,54 +309,74 @@
             top: 20px;
             left: 20px;
             right: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
             background: rgba(0, 0, 0, 0.85);
-            padding: 12px 16px;
+            padding: 4px 4px 4px 16px;
             border-radius: 12px;
             font-size: 12px;
             z-index: 100;
             backdrop-filter: blur(10px);
+            color: #FFFFFF;
         }
+        #status-body {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            min-width: 0;
+        }
+        #status-heading {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            line-height: 1;
+        }
+        #heading-dir {
+            font-size: 16px;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+        }
+        #heading-tilt {
+            font-size: 14px;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+            opacity: 0.85;
+        }
+        /* 36px square: a comfortable tap target without fattening the bar. */
+        #status-toggle {
+            width: 36px;
+            height: 36px;
+            margin-left: 4px;
+            background: none;
+            border: none;
+            color: inherit;
+            font: inherit;
+            font-size: 18px;
+            line-height: 1;
+            border-radius: 8px;
+        }
+        #plane-count {
+            flex-basis: 100%;
+            padding: 0 0 8px;
+        }
+        #plane-count[hidden] { display: none; }
+        /* Folded: just the toggle, tucked into the top-right corner. */
+        #status.collapsed {
+            left: auto;
+            padding: 4px;
+        }
+        #status.collapsed #status-body,
+        #status.collapsed #plane-count { display: none; }
+        #status.collapsed #status-toggle { margin-left: 0; }
 
-        /* The heading the phone is facing, in plain compass terms. This is the only
-           orientation readout end users see; the raw sensor panel below is dev-only. */
         /* Fixed height with centred items rather than padding around a baseline
            row: on a baseline row the descender space below the text left the
            letters sitting high. line-height 1 makes each item's box its own font
            size, so centring the boxes centres the letters. */
         :root { --bottom-pill-height: 44px; }
-        #heading-pill {
-            position: fixed;
-            bottom: 20px;
-            left: 20px;
-            display: flex;
-            align-items: center;
-            height: var(--bottom-pill-height);
-            line-height: 1;
-            gap: 8px;
-            background: rgba(0, 0, 0, 0.6);
-            padding: 0 16px;
-            border-radius: 999px;
-            z-index: 100;
-            backdrop-filter: blur(10px);
-            color: #FFFFFF;
-        }
-        #heading-pill .heading-label {
-            font-size: 11px;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-            opacity: 0.7;
-        }
-        #heading-pill #heading-dir {
-            font-size: 20px;
-            font-weight: 700;
-            letter-spacing: 0.02em;
-        }
-        #heading-pill #heading-tilt {
-            font-size: 15px;
-            font-weight: 600;
-            font-variant-numeric: tabular-nums;
-            opacity: 0.85;
-        }
 
         /* Raw sensor readout, testing only. Hidden unless the URL carries ?debug. */
         #debug {
@@ -772,15 +791,19 @@
     <div id="overlay"></div>
     <div class="crosshair"></div>
 
+    <!-- Where you are and which way you're facing, in one bar that folds away. -->
     <div id="status">
-        <div>📍 Getting location...</div>
-        <div id="plane-count">✈️ Searching for planes...</div>
-    </div>
-
-    <div id="heading-pill">
-        <span class="heading-label">Facing</span>
-        <span id="heading-dir">—</span>
-        <span id="heading-tilt"></span>
+        <div id="status-body">
+            <span id="status-location">📍 Getting location...</span>
+            <span id="status-heading">
+                <span id="heading-dir">—</span>
+                <span id="heading-tilt"></span>
+            </span>
+        </div>
+        <button id="status-toggle" type="button" aria-expanded="true"
+                aria-controls="status-body" aria-label="Hide location and direction">▴</button>
+        <!-- Only shown when the plane feed fails. -->
+        <div id="plane-count" hidden></div>
     </div>
 
     <!-- Which kinds of aircraft get pills. -->
@@ -1998,6 +2021,7 @@
                 });
                 planeFeedOk = false;
                 planeCountEl.textContent = '✈️ Error loading planes';
+                planeCountEl.hidden = false;
                 if (!trackedFetchError) {
                     trackedFetchError = true;
                     track('api-error', {
@@ -2503,16 +2527,8 @@
             document.getElementById('debug-visible').textContent = visibleMarkers.size;
             updateGroupCounts(groupCounts);
 
-            // The headline count is the pills on screen, not the feed total: a
-            // number that disagrees with what you can see reads as a bug.
-            if (planeFeedOk) {
-                const n = visibleMarkers.size;
-                const text = compassHeading === null
-                    ? '✈️ No compass signal'
-                    : `✈️ Tracking ${n} ${n === 1 ? 'plane' : 'planes'}`;
-                // Runs ~10 times a second; only touch the DOM on a change.
-                if (planeCountEl.textContent !== text) planeCountEl.textContent = text;
-            }
+            // The feed-error line clears once a poll succeeds again.
+            if (planeFeedOk && !planeCountEl.hidden) planeCountEl.hidden = true;
 
             lastCandidates = candidates;
             if (debugMode && ++flightLogTick % FLIGHT_LOG_FRAME_EVERY === 0) {
@@ -3086,10 +3102,33 @@
             selectedPlane = null;
         });
 
+        // Fold the location/direction bar away and back; remembered on this phone.
+        const STATUS_COLLAPSED_KEY = 'jetlens-status-collapsed';
+        (() => {
+            const bar = document.getElementById('status');
+            const toggle = document.getElementById('status-toggle');
+            const setCollapsed = collapsed => {
+                bar.classList.toggle('collapsed', collapsed);
+                toggle.setAttribute('aria-expanded', String(!collapsed));
+                toggle.setAttribute('aria-label',
+                    collapsed ? 'Show location and direction' : 'Hide location and direction');
+                toggle.textContent = collapsed ? '▾' : '▴';
+            };
+            let collapsed = false;
+            try { collapsed = localStorage.getItem(STATUS_COLLAPSED_KEY) === '1'; } catch { }
+            setCollapsed(collapsed);
+            toggle.addEventListener('click', () => {
+                collapsed = !collapsed;
+                setCollapsed(collapsed);
+                try { localStorage.setItem(STATUS_COLLAPSED_KEY, collapsed ? '1' : '0'); } catch { }
+                track('status-toggle', { collapsed });
+            });
+        })();
+
         // Update status display
         function updateStatus() {
             if (userLocation) {
-                document.querySelector('#status div:first-child').textContent = 
+                document.getElementById('status-location').textContent =
                     `📍 ${userLocation.lat.toFixed(4)}, ${userLocation.lon.toFixed(4)}`;
             }
         }
