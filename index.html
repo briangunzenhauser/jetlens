@@ -1077,6 +1077,156 @@
             return 'other';
         }
 
+        // --- Pill labels ---
+        //
+        // The pill says what the aircraft is in a word or two, about the width of a
+        // callsign; the card has the rest, including the flight number. Airlines show
+        // the brand painted on the plane, so regionals that fly for one brand get that
+        // brand. Anything we can't name falls back to the callsign.
+
+        // Short brand per airline/cargo ICAO code. Regionals map to the brand they fly
+        // as; SkyWest and Republic fly for several, so they keep their own name.
+        const SHORT_BRANDS = new Map([
+            ['AAL', 'American'], ['DAL', 'Delta'], ['UAL', 'United'],
+            ['SWA', 'Southwest'], ['ASA', 'Alaska'], ['JBU', 'JetBlue'],
+            ['NKS', 'Spirit'], ['FFT', 'Frontier'], ['HAL', 'Hawaiian'],
+            ['SCX', 'Sun Country'], ['AAY', 'Allegiant'], ['MXY', 'Breeze'],
+
+            ['SKW', 'SkyWest'], ['RPA', 'Republic'],
+            ['QXE', 'Alaska'], ['ENY', 'American'], ['EDV', 'Delta'],
+            ['JIA', 'American'], ['PDT', 'American'], ['AWI', 'American'],
+            ['ASH', 'United'], ['GJS', 'United'], ['UCA', 'United'],
+
+            ['ACA', 'Air Canada'], ['WJA', 'WestJet'], ['TSC', 'Transat'],
+            // Not on the carrier list, but caught as airliners by size.
+            ['JZA', 'Air Canada'], ['ROU', 'Rouge'], ['POE', 'Porter'],
+            ['AMX', 'Aeromexico'], ['VOI', 'Volaris'], ['VIV', 'Viva'],
+            ['CMP', 'Copa'], ['AVA', 'Avianca'], ['LAN', 'LATAM'], ['TAM', 'LATAM'],
+            ['GLO', 'Gol'], ['AZU', 'Azul'], ['ARG', 'Aerolineas'],
+
+            ['DLH', 'Lufthansa'], ['BAW', 'British'], ['AFR', 'Air France'],
+            ['KLM', 'KLM'], ['SWR', 'Swiss'], ['AUA', 'Austrian'], ['IBE', 'Iberia'],
+            ['TAP', 'TAP'], ['SAS', 'SAS'], ['FIN', 'Finnair'], ['VIR', 'Virgin'],
+            ['ITY', 'ITA'], ['THY', 'Turkish'], ['AEE', 'Aegean'], ['LOT', 'LOT'],
+            ['CSA', 'Czech'], ['EIN', 'Aer Lingus'], ['ICE', 'Icelandair'],
+            ['BEL', 'Brussels'], ['NAX', 'Norwegian'],
+
+            ['UAE', 'Emirates'], ['QTR', 'Qatar'], ['ETD', 'Etihad'],
+            ['SVA', 'Saudia'], ['MSR', 'EgyptAir'], ['RJA', 'Jordanian'],
+            ['ELY', 'El Al'], ['ETH', 'Ethiopian'], ['SAA', 'SAA'], ['RAM', 'RAM'],
+            ['KQA', 'Kenya'],
+
+            ['SIA', 'Singapore'], ['CPA', 'Cathay'], ['ANA', 'ANA'], ['JAL', 'JAL'],
+            ['KAL', 'Korean Air'], ['AAR', 'Asiana'], ['EVA', 'EVA Air'],
+            ['CAL', 'China Airlines'], ['CCA', 'Air China'], ['CES', 'China Eastern'],
+            ['CSN', 'China Southern'], ['THA', 'Thai'], ['MAS', 'Malaysia'],
+            ['GIA', 'Garuda'], ['PAL', 'Philippine'], ['HVN', 'Vietnam'],
+            ['AIC', 'Air India'], ['QFA', 'Qantas'], ['ANZ', 'Air NZ'],
+            ['VOZ', 'Virgin'], ['FJI', 'Fiji'],
+
+            // Cargo. Atlas, ABX, ATI and Star Air fly for Amazon and DHL alike, so
+            // they keep their own names.
+            ['FDX', 'FedEx'], ['UPS', 'UPS'], ['GTI', 'Atlas'], ['ABX', 'ABX'],
+            ['ATN', 'ATI'], ['CKS', 'Kalitta'], ['PAC', 'Polar'], ['CLX', 'Cargolux'],
+            ['BOX', 'AeroLogic'], ['GEC', 'Lufthansa'], ['CAO', 'Air China'],
+            ['ABW', 'AirBridge'], ['MTN', 'Mountain'], ['SRR', 'Star Air'],
+            ['CJT', 'Cargojet'], ['WGN', 'Western'], ['NCR', 'National'],
+            ['AJT', 'Amerijet'],
+
+            // Fractional and charter operators.
+            ['EJA', 'NetJets'], ['NJE', 'NetJets'], ['LXJ', 'Flexjet'],
+            ['VJA', 'VistaJet'], ['XOJ', 'XO'], ['JTL', 'Jet Linx'], ['EJM', 'Exec Jet'],
+        ]);
+
+        // Business jets go by model family, so a Citation isn't just another Cessna.
+        // First matching prefix of the ICAO type code wins.
+        const JET_FAMILIES = [
+            ['C5', 'Citation'], ['C6', 'Citation'], ['C7', 'Citation'], ['C25', 'Citation'],
+            ['E50P', 'Phenom'], ['E55P', 'Phenom'], ['E545', 'Praetor'], ['E550', 'Praetor'],
+            ['CL3', 'Challenger'], ['CL6', 'Challenger'], ['GL', 'Global'],
+            ['GLF', 'Gulfstream'], ['GA', 'Gulfstream'], ['G150', 'Gulfstream'],
+            ['G280', 'Gulfstream'], ['GALX', 'Gulfstream'], ['ASTR', 'Gulfstream'],
+            ['LJ', 'Learjet'], ['F2TH', 'Falcon'], ['F900', 'Falcon'], ['FA', 'Falcon'],
+            ['BE40', 'Beechjet'], ['BE4W', 'Beechjet'], ['PRM1', 'Premier'],
+            ['H25', 'Hawker'], ['HDJT', 'HondaJet'], ['SF50', 'Cirrus'], ['PC24', 'Pilatus'],
+            ['EA50', 'Eclipse'], ['WW24', 'Westwind'],
+        ];
+        // GLF has to beat GL, so try longer prefixes first.
+        JET_FAMILIES.sort((a, b) => b[0].length - a[0].length);
+
+        // Manufacturer by ICAO type-code prefix, for small planes and helicopters.
+        // Covers the common types when the feed has no description; longer prefixes
+        // are tried first.
+        const MAKER_BY_TYPE = [
+            ['C1', 'Cessna'], ['C2', 'Cessna'], ['C3', 'Cessna'], ['C4', 'Cessna'],
+            ['C72R', 'Cessna'], ['C82', 'Cessna'], ['T206', 'Cessna'], ['COL', 'Cessna'],
+            ['P28', 'Piper'], ['P32', 'Piper'], ['P46', 'Piper'], ['PA', 'Piper'],
+            ['SR2', 'Cirrus'], ['S22T', 'Cirrus'], ['BE', 'Beechcraft'], ['B350', 'Beechcraft'],
+            ['M20', 'Mooney'], ['DA', 'Diamond'], ['DV20', 'Diamond'], ['PC12', 'Pilatus'],
+            ['TBM', 'TBM'], ['RV', "Van's"], ['SLG', 'Sling'], ['K100', 'Kodiak'],
+            ['EC', 'Airbus'], ['AS', 'Airbus'], ['H1', 'Airbus'], ['R22', 'Robinson'],
+            ['R44', 'Robinson'], ['R66', 'Robinson'], ['B0', 'Bell'], ['B2', 'Bell'],
+            ['B4', 'Bell'], ['A1', 'Leonardo'], ['H500', 'MD'], ['S76', 'Sikorsky'],
+            ['G2CA', 'Guimbal'],
+        ];
+        MAKER_BY_TYPE.sort((a, b) => b[0].length - a[0].length);
+
+        // Manufacturer by the first word(s) of the feed's description, which is
+        // upper case and sometimes the parent company rather than the badge.
+        const MAKER_BY_DESC = [
+            ['AIRBUS HELICOPTERS', 'Airbus'], ['AEROSPATIALE', 'Airbus'],
+            ['EUROCOPTER', 'Airbus'], ['AGUSTA', 'Leonardo'], ['LEONARDO', 'Leonardo'],
+            ['HUGHES', 'MD'], ['MCDONNELL DOUGLAS', 'MD'], ['NORTH AMERICAN ROCKWELL', 'Commander'],
+            ['AIRPLANE FACTORY', 'Sling'], ['BEECHCRAFT', 'Beechcraft'], ['BEECH', 'Beechcraft'],
+            ['SOCATA', 'TBM'], ['DAHER', 'Kodiak'], ['VANS', "Van's"], ['DE HAVILLAND', 'de Havilland'],
+            ['BRM AERO', 'Bristell'], ['AMERICAN', 'Grumman'],
+        ];
+
+        function prefixLookup(table, code) {
+            if (!code) return null;
+            return table.find(([prefix]) => code.startsWith(prefix))?.[1] ?? null;
+        }
+
+        function makerFromDesc(desc) {
+            if (!desc) return null;
+            const upper = desc.toUpperCase();
+            const known = MAKER_BY_DESC.find(([start]) => upper.startsWith(start + ' '));
+            if (known) return known[1];
+            // "CESSNA 172 Skyhawk" -> "Cessna"
+            const word = upper.split(/\s+/)[0];
+            if (!/^[A-Z]{3,}$/.test(word)) return null;
+            return word[0] + word.slice(1).toLowerCase();
+        }
+
+        // Military aircraft go by designation: "Northrop T-38A Talon" -> "T-38",
+        // "SIKORSKY UH-60 Black Hawk" -> "UH-60". The variant letter is dropped.
+        function militaryDesignation(desc) {
+            const match = desc && desc.match(/\b([A-Z]{1,3}-\d{1,3})[A-Z]?\b/);
+            return match ? match[1] : null;
+        }
+
+        function pillLabel(ac, callsign, group) {
+            const prefix = (callsign.match(/^([A-Z]{3})[0-9]/) || [])[1];
+            const fallback = callsign !== 'N/A' ? callsign : (ac.r || 'Unknown');
+            switch (group) {
+                case 'airline':
+                case 'cargo':
+                    return SHORT_BRANDS.get(prefix) || fallback;
+                case 'business':
+                    return SHORT_BRANDS.get(prefix) ||
+                        prefixLookup(JET_FAMILIES, ac.t) ||
+                        makerFromDesc(ac.desc) || fallback;
+                case 'small':
+                case 'helicopter':
+                    return prefixLookup(MAKER_BY_TYPE, ac.t) ||
+                        makerFromDesc(ac.desc) || fallback;
+                case 'military':
+                    return militaryDesignation(ac.desc) || fallback;
+                default:
+                    return fallback;
+            }
+        }
+
         // Global state
         let userLocation = null;
         let deviceOrientation = { alpha: 0, beta: 0, gamma: 0 };
@@ -1711,6 +1861,7 @@
                         // most of the rest.
                         const rate = ac.baro_rate ?? ac.geom_rate ?? null;
                         const callsign = ac.flight ? ac.flight.trim() : 'N/A';
+                        const group = classifyAircraft(ac, callsign);
 
                         return {
                             icao24: ac.hex,
@@ -1734,7 +1885,8 @@
                             // triangulated and noisier). seen_pos is how many seconds
                             // old the position already was when the feed answered.
                             carrier: isMajorCarrier(callsign),
-                            group: classifyAircraft(ac, callsign),
+                            group,
+                            label: pillLabel(ac, callsign, group),
                             // Owner asked for limited tracking (LADD, bit 8) or flies on
                             // a privacy address (PIA, bit 4): keep their name off the card.
                             limited: Boolean(ac.dbFlags & 12),
@@ -2428,7 +2580,7 @@
             const dot = document.createElement('span');
             dot.className = `group-dot group-${plane.group}`;
             inner.appendChild(dot);
-            inner.append(plane.callsign || 'Unknown');
+            inner.append(plane.label);
             
             marker.appendChild(inner);
             
