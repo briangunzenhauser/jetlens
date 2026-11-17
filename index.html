@@ -177,6 +177,14 @@
             height: 18px;
             accent-color: var(--sky-500);
         }
+        /* "All" has no dot, so its name is indented to line up with the group
+           names, and a rule separates it from them. */
+        #filter-list .filter-all {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+            margin-bottom: 4px;
+            font-weight: 600;
+        }
+        #filter-list .filter-all span:first-of-type { margin-left: 14px; }
         #filter-list .group-count {
             margin-left: auto;
             padding-left: 12px;
@@ -1048,7 +1056,7 @@
 
         // Order is the order the filter tab lists them in.
         const AIRCRAFT_GROUPS = [
-            { id: 'airline', label: 'Airlines', defaultOn: true },
+            { id: 'airline', label: 'Airlines' },
             { id: 'cargo', label: 'Cargo' },
             { id: 'business', label: 'Business jets' },
             { id: 'small', label: 'Small planes' },
@@ -1289,14 +1297,22 @@
         // to the URL.
         const debugMode = new URLSearchParams(location.search).has('debug');
 
+        // Append ?callsign to the URL to put the raw callsign in the pills instead of
+        // the brand or aircraft kind, for comparing the two.
+        const callsignMode = new URLSearchParams(location.search).has('callsign');
+
         // Which groups get pills, remembered on this phone between visits.
-        const GROUPS_STORAGE_KEY = 'jetlens-groups';
+        // Versioned: v2 started everyone over on All when it became the default.
+        const GROUPS_STORAGE_KEY = 'jetlens-groups-v2';
+        try { localStorage.removeItem('jetlens-groups'); } catch { /* storage unavailable */ }
         const enabledGroups = (() => {
             try {
                 const saved = JSON.parse(localStorage.getItem(GROUPS_STORAGE_KEY));
                 if (Array.isArray(saved)) return new Set(saved);
             } catch { /* private mode or bad JSON: fall through to defaults */ }
-            return new Set(AIRCRAFT_GROUPS.filter(g => g.defaultOn).map(g => g.id));
+            // Everything by default, so a first visit doesn't look like it's missing
+            // aircraft. Narrowing it down is the visitor's choice.
+            return new Set(AIRCRAFT_GROUPS.map(g => g.id));
         })();
 
         function groupShown(plane) {
@@ -1309,6 +1325,45 @@
             const list = document.getElementById('filter-list');
             tab.hidden = false;
 
+            const saveGroups = () => {
+                try {
+                    localStorage.setItem(GROUPS_STORAGE_KEY, JSON.stringify([...enabledGroups]));
+                } catch { /* storage unavailable: the choice lasts this visit */ }
+            };
+
+            // "All" is ticked when every group is on, half-ticked when some are.
+            // Tapping it turns everything on, or everything off if all were on, so
+            // picking just a couple of groups starts from a clean slate.
+            const allLabel = document.createElement('label');
+            allLabel.className = 'filter-all';
+            const allInput = document.createElement('input');
+            allInput.type = 'checkbox';
+            const allName = document.createElement('span');
+            allName.textContent = 'All';
+            const allCount = document.createElement('span');
+            allCount.className = 'group-count';
+            allCount.dataset.group = 'all';
+            allLabel.append(allInput, allName, allCount);
+            list.appendChild(allLabel);
+
+            const groupInputs = [];
+            const syncAll = () => {
+                const on = AIRCRAFT_GROUPS.filter(g => enabledGroups.has(g.id)).length;
+                allInput.checked = on === AIRCRAFT_GROUPS.length;
+                allInput.indeterminate = on > 0 && on < AIRCRAFT_GROUPS.length;
+            };
+            allInput.addEventListener('change', () => {
+                const turnOn = allInput.checked;
+                for (const { group, input } of groupInputs) {
+                    input.checked = turnOn;
+                    if (turnOn) enabledGroups.add(group.id);
+                    else enabledGroups.delete(group.id);
+                }
+                syncAll();
+                saveGroups();
+                track('group-filter', { group: 'all', on: turnOn });
+            });
+
             for (const group of AIRCRAFT_GROUPS) {
                 const label = document.createElement('label');
                 const input = document.createElement('input');
@@ -1317,9 +1372,8 @@
                 input.addEventListener('change', () => {
                     if (input.checked) enabledGroups.add(group.id);
                     else enabledGroups.delete(group.id);
-                    try {
-                        localStorage.setItem(GROUPS_STORAGE_KEY, JSON.stringify([...enabledGroups]));
-                    } catch { /* storage unavailable: the choice lasts this visit */ }
+                    syncAll();
+                    saveGroups();
                     track('group-filter', { group: group.id, on: input.checked });
                 });
                 const dot = document.createElement('span');
@@ -1333,7 +1387,9 @@
                 count.dataset.group = group.id;
                 label.append(input, dot, name, count);
                 list.appendChild(label);
+                groupInputs.push({ group, input });
             }
+            syncAll();
 
             // Behaves like a small modal: a tap anywhere outside, or Escape, closes it.
             const backdrop = document.getElementById('filter-backdrop');
@@ -1354,7 +1410,10 @@
         // a change, since it runs ~10 times a second.
         function updateGroupCounts(counts) {
             document.querySelectorAll('#filter-list .group-count').forEach(el => {
-                const text = String(counts[el.dataset.group] || 0);
+                const n = el.dataset.group === 'all'
+                    ? Object.values(counts).reduce((sum, c) => sum + c, 0)
+                    : counts[el.dataset.group];
+                const text = String(n || 0);
                 if (el.textContent !== text) el.textContent = text;
             });
         }
@@ -2580,7 +2639,7 @@
             const dot = document.createElement('span');
             dot.className = `group-dot group-${plane.group}`;
             inner.appendChild(dot);
-            inner.append(plane.label);
+            inner.append(callsignMode ? plane.callsign : plane.label);
             
             marker.appendChild(inner);
             
