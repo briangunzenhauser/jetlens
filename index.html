@@ -233,6 +233,10 @@
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }
 
+        .info-row[hidden] {
+            display: none;
+        }
+
         .info-row:last-child {
             border-bottom: none;
         }
@@ -269,6 +273,17 @@
         .location-sub:empty {
             display: none;
         }
+
+        .private-note {
+            margin: -8px 0 8px;
+            padding: 12px 14px;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.08);
+            font-size: 14px;
+            line-height: 1.45;
+            color: rgba(255, 255, 255, 0.8);
+        }
+        .private-note[hidden] { display: none; }
 
         /* AeroDataBox's free plan requires a visible credit with a working link,
            shown wherever its data is. Only appears when it supplied the route. */
@@ -831,14 +846,19 @@
         <button id="close-btn">×</button>
         <h2 id="flight-number">-</h2>
         <div class="airline" id="airline-name">-</div>
-        <div class="info-row">
+        <!-- Shown instead of origin and destination for owners who asked for privacy. -->
+        <p class="private-note" id="private-note" hidden>
+            The owner of this aircraft has asked that its flights stay private, so JetLens
+            doesn't show where it's coming from or going.
+        </p>
+        <div class="info-row" id="origin-row">
             <span class="info-label">Origin</span>
             <span class="info-value location-value">
                 <span id="origin">-</span>
                 <small class="location-sub" id="origin-sub"></small>
             </span>
         </div>
-        <div class="info-row">
+        <div class="info-row" id="destination-row">
             <span class="info-label">Destination</span>
             <span class="info-value location-value">
                 <span id="destination">-</span>
@@ -2936,12 +2956,12 @@
         // file at the same time and prefer AeroDataBox, which knows what this
         // airframe is flying today; the free file lists one route per flight number
         // and is often stale. If AeroDataBox declined only to stay on budget and the
-        // free route doesn't fit either, ask again as a fallback. Non-airline
-        // flights (charter, private) use the free file only: AeroDataBox rarely has
-        // them, and they'd spend the allowance for nothing.
+        // free route doesn't fit either, ask again as a fallback. Every flight gets
+        // this, not just airlines: AeroDataBox looks up the airframe, so it can know
+        // charter and private flights the free file never lists. That spends more
+        // of the allowance; the pacing in /api/route keeps it from running dry early.
         async function fetchBestRoute(plane, cs) {
             const free = cs ? fetchRoute(plane, cs) : Promise.resolve(null);
-            if (!cs || !isMajorCarrier(cs)) return free;
 
             const paced = await fetchAeroDataBox(plane, 'first');
             if (paced.info) return paced.info;
@@ -3047,14 +3067,21 @@
             const speedKnots = plane.velocity ? Math.round(plane.velocity * 1.94384) : 0;
             document.getElementById('speed').textContent = `${speedKnots} knots`;
             
-            setLocation('origin', 'Loading...', '');
-            setLocation('destination', 'Loading...', '');
             document.getElementById('route-credit').hidden = true;
             document.getElementById('aircraft-type').textContent =
                 plane.aircraft_desc || plane.aircraft_type ||
                 plane.icao24.toUpperCase();
-            
+
+            // Owners who asked for privacy (LADD or PIA) get a note instead of a
+            // route, and no lookup is made for them at all.
+            document.getElementById('private-note').hidden = !plane.limited;
+            document.getElementById('origin-row').hidden = plane.limited;
+            document.getElementById('destination-row').hidden = plane.limited;
             infoPanel.classList.add('active');
+            if (plane.limited) return;
+
+            setLocation('origin', 'Loading...', '');
+            setLocation('destination', 'Loading...', '');
 
             // Fetch route information in the background
             const routeInfo = await getRouteInfo(plane);
@@ -3090,9 +3117,10 @@
                     document.getElementById('aircraft-type').textContent = routeInfo.type;
                 }
             } else {
-                // No route data found
-                setLocation('origin', 'Data not available', '');
-                setLocation('destination', 'Data not available', '');
+                // Neither source knows this flight: common for charter and private
+                // flights, which file no published schedule.
+                setLocation('origin', 'Not found', '');
+                setLocation('destination', 'Not found', '');
             }
         }
 
