@@ -90,7 +90,7 @@
             transform: translate(-50%, -50%) scale(0.95);
         }
 
-        /* Experimental aircraft-group filter (?tab). Each group gets a dot in the
+        /* Aircraft-group filter. Each group gets a dot in the
            pill rather than a whole new pill colour, so the midnight pill keeps its
            contrast against bright sky whatever the group. */
         :root {
@@ -775,7 +775,7 @@
         <span id="heading-tilt"></span>
     </div>
 
-    <!-- Experimental: which kinds of aircraft get pills. Shown only with ?tab. -->
+    <!-- Which kinds of aircraft get pills. -->
     <div id="filter-backdrop" hidden></div>
     <div id="filter-tab" hidden>
         <div id="filter-list" hidden></div>
@@ -1010,7 +1010,7 @@
             return match !== null && CARRIERS.has(match[1]);
         }
 
-        // --- Aircraft groups (experimental, ?tab) ---
+        // --- Aircraft groups ---
         //
         // Sorts every aircraft into one group for the filter tab. Measured against a
         // live adsb.fi snapshot (526 airborne within 150 nm of Lancaster, 2026-11-16):
@@ -1139,10 +1139,6 @@
         // to the URL.
         const debugMode = new URLSearchParams(location.search).has('debug');
 
-        // Experimental aircraft-group filter: append ?tab to the URL. Without it the
-        // app behaves exactly as before, airlines only.
-        const tabMode = new URLSearchParams(location.search).has('tab');
-
         // Which groups get pills, remembered on this phone between visits.
         const GROUPS_STORAGE_KEY = 'jetlens-groups';
         const enabledGroups = (() => {
@@ -1154,7 +1150,7 @@
         })();
 
         function groupShown(plane) {
-            return !tabMode || enabledGroups.has(plane.group);
+            return enabledGroups.has(plane.group);
         }
 
         function initFilterTab() {
@@ -1244,7 +1240,7 @@
                 document.getElementById('debug-mark').addEventListener('click', markCrosshair);
                 document.getElementById('debug-save').addEventListener('click', saveFlightLog);
             }
-            if (tabMode) initFilterTab();
+            initFilterTab();
 
             if (previewMode === 'intro') {
                 loading.classList.add('hidden');
@@ -1749,12 +1745,9 @@
                         plane.latitude &&
                         plane.longitude &&
                         !plane.on_ground &&
-                        plane.baro_altitude > MIN_ALTITUDE &&
-                        // While testing, every aircraft is welcome: more traffic
-                        // overhead means more to Mark. `carrier` keeps them separable.
-                        // The ?tab filter needs every group to choose from; it
-                        // narrows them in updateMarkers.
-                        (debugMode || tabMode || plane.carrier)
+                        // Every group is kept here so the Show tab has them all to
+                        // choose from; it narrows them in updateMarkers.
+                        plane.baro_altitude > MIN_ALTITUDE
                     );
 
                     logEvent('poll', {
@@ -2259,7 +2252,7 @@
                     position = planeToScreenPosition(bearing, elevation);
 
                     // Only show if position is actually on screen
-                    // A group switched off in the ?tab filter counts as off screen:
+                    // A group switched off in the Show tab counts as off screen:
                     // onScreen means "has a pill", for the count and the recorder alike.
                     onScreen = position.x >= 0 && position.x <= window.innerWidth &&
                                position.y >= 0 && position.y <= window.innerHeight &&
@@ -2297,7 +2290,7 @@
             
             // Update debug display with visible count
             document.getElementById('debug-visible').textContent = visibleMarkers.size;
-            if (tabMode) updateGroupCounts(groupCounts);
+            updateGroupCounts(groupCounts);
 
             // The headline count is the pills on screen, not the feed total: a
             // number that disagrees with what you can see reads as a bug.
@@ -2432,11 +2425,9 @@
             
             const inner = document.createElement('div');
             inner.className = 'plane-marker-inner';
-            if (tabMode) {
-                const dot = document.createElement('span');
-                dot.className = `group-dot group-${plane.group}`;
-                inner.appendChild(dot);
-            }
+            const dot = document.createElement('span');
+            dot.className = `group-dot group-${plane.group}`;
+            inner.appendChild(dot);
             inner.append(plane.callsign || 'Unknown');
             
             marker.appendChild(inner);
@@ -2816,12 +2807,12 @@
 
             // Show panel immediately with basic info
             document.getElementById('flight-number').textContent = plane.callsign || 'Unknown Flight';
-            // With ?tab, private owners who asked not to be tracked by name get the
+            // Private owners who asked not to be tracked by name get the
             // group instead, and so does anyone the feed has no operator for.
-            const hideOwner = tabMode && plane.limited;
+            const hideOwner = plane.limited;
             const groupLabel = AIRCRAFT_GROUPS.find(g => g.id === plane.group)?.label;
             document.getElementById('airline-name').textContent =
-                (!hideOwner && plane.operator) || (tabMode && groupLabel) || 'Unknown';
+                (!hideOwner && plane.operator) || groupLabel || 'Unknown';
             
             const altitudeFt = plane.baro_altitude ? Math.round(plane.baro_altitude * 3.28084) : 0;
             document.getElementById('altitude').textContent = `${altitudeFt.toLocaleString()} ft`;
@@ -2833,7 +2824,7 @@
             setLocation('destination', 'Loading...', '');
             document.getElementById('route-credit').hidden = true;
             document.getElementById('aircraft-type').textContent =
-                (tabMode && (plane.aircraft_desc || plane.aircraft_type)) ||
+                plane.aircraft_desc || plane.aircraft_type ||
                 plane.icao24.toUpperCase();
             
             infoPanel.classList.add('active');
