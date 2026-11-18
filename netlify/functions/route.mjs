@@ -108,6 +108,14 @@ function compactLegs(list) {
         .map((f) => ({
             status: f.status || null,
             callsign: f.callSign || null,
+            // The flight number and airline AeroDataBox files the leg under. For a
+            // regional like Republic, which flies for several mainlines under its
+            // own callsign, this is how the card can tell whose flight it is.
+            number: f.number || null,
+            airline: f.airline
+                ? { name: f.airline.name || null, iata: f.airline.iata || null,
+                    icao: f.airline.icao || null }
+                : null,
             departs: bestTime(f.departure),
             arrives: bestTime(f.arrival),
             origin: airport(f.departure?.airport),
