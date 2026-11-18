@@ -319,6 +319,186 @@
             background: rgba(255, 255, 255, 0.25);
         }
 
+        /* --- ?ui: the glass card ---
+           Opt-in redesign of the card, switched on by adding ?ui to the URL (the
+           .ui class is set from the script). The classic card ignores the ui-only
+           elements below, and the ui card hides the classic ones, so both share one
+           set of markup and one fill-in routine. */
+        .ui-code, .ui-city, .ui-maker { display: none; }
+
+        /* Kept to half the screen at most, so the sky the plane is in stays visible
+           above it. dvh where supported, so iOS's toolbar doesn't count. */
+        #info-panel.ui {
+            /* The airline's colours, as "r g b" triples set by the script. These
+               defaults are the app's own sky blue, for anything without a livery. */
+            --c1: 13 149 242;
+            --c2: 67 56 202;
+            --c3: 125 211 252;
+            --tilt: 210deg;
+            max-height: 50vh;
+            max-height: 50dvh;
+            padding: 20px 20px calc(16px + env(safe-area-inset-bottom));
+            display: grid;
+            grid-template-columns: repeat(6, minmax(0, 1fr));
+            grid-template-areas:
+                "airline airline airline airline airline airline"
+                "flight  flight  flight  flight  flight  flight"
+                "note    note    note    note    note    note"
+                "origin  origin  origin  dest    dest    dest"
+                "alt     alt     speed   speed   craft   craft"
+                "credit  credit  credit  credit  credit  credit";
+            column-gap: 12px;
+            align-content: start;
+            color: #fff;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+            border-top: 1px solid rgba(255, 255, 255, 0.28);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+            backdrop-filter: blur(22px) saturate(160%);
+            -webkit-backdrop-filter: blur(22px) saturate(160%);
+            /* Glass tinted with the livery. Several soft, off-centre blobs of each
+               colour over a slow conic sweep, so the wash reads as a blend rather
+               than as any one radial or linear gradient; a dark scrim on top keeps
+               white text legible over even a yellow livery. */
+            background-color: rgba(10, 12, 20, 0.30);
+            background-image:
+                linear-gradient(180deg, rgba(0, 0, 0, 0.10), rgba(0, 0, 0, 0.42)),
+                radial-gradient(55% 85% at 6% 12%, rgb(var(--c1) / 0.85), transparent 72%),
+                radial-gradient(40% 70% at 88% -6%, rgb(var(--c2) / 0.80), transparent 70%),
+                radial-gradient(65% 55% at 74% 104%, rgb(var(--c1) / 0.60), transparent 74%),
+                radial-gradient(38% 60% at 34% 88%, rgb(var(--c3) / 0.65), transparent 70%),
+                radial-gradient(30% 45% at 56% 30%, rgb(var(--c2) / 0.45), transparent 72%),
+                /* Centred off the card, so only the sweep shows, not its pinch point. */
+                conic-gradient(from var(--tilt) at 118% -40%,
+                    rgb(var(--c2) / 0.45), rgb(var(--c1) / 0.35),
+                    rgb(var(--c3) / 0.40), rgb(var(--c2) / 0.45));
+        }
+
+        #info-panel.ui #close-btn {
+            top: 16px;
+            right: 16px;
+            width: 32px;
+            height: 32px;
+            font-size: 20px;
+            background: rgba(255, 255, 255, 0.18);
+        }
+
+        #info-panel.ui .airline {
+            grid-area: airline;
+            font-size: 28px;
+            font-weight: 700;
+            line-height: 1.15;
+            color: #fff;
+            margin: 0;
+            padding-right: 44px; /* clear of the close button */
+        }
+
+        #info-panel.ui h2 {
+            grid-area: flight;
+            font-size: 15px;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            color: rgba(255, 255, 255, 0.78);
+            margin: 2px 0 12px;
+        }
+
+        #info-panel.ui .private-note {
+            grid-area: note;
+            margin: 0 0 12px;
+            background: rgba(0, 0, 0, 0.22);
+            color: #fff;
+        }
+
+        #info-panel.ui #origin-row { grid-area: origin; }
+        #info-panel.ui #destination-row { grid-area: dest; }
+        #info-panel.ui #altitude-row { grid-area: alt; }
+        #info-panel.ui #speed-row { grid-area: speed; }
+        #info-panel.ui #aircraft-row { grid-area: craft; }
+        #info-panel.ui .route-credit {
+            grid-area: credit;
+            margin-top: 10px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        /* Each fact becomes a small label over its value, instead of a row. */
+        #info-panel.ui .info-row {
+            flex-direction: column;
+            justify-content: flex-start;
+            gap: 4px;
+            padding: 12px 0;
+            border-bottom: none;
+            border-top: 1px solid rgba(255, 255, 255, 0.16);
+            min-width: 0;
+        }
+
+        #info-panel.ui .info-row[hidden] { display: none; }
+
+        #info-panel.ui .info-label {
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: rgba(255, 255, 255, 0.72);
+        }
+
+        #info-panel.ui .info-value {
+            font-size: 15px;
+            text-align: left;
+            overflow-wrap: anywhere;
+        }
+
+        /* Origin and destination side by side: code large, city beneath. */
+        #info-panel.ui .location-value {
+            align-items: flex-start;
+            padding-left: 0;
+        }
+        #info-panel.ui #origin,
+        #info-panel.ui #destination,
+        #info-panel.ui .location-sub { display: none; }
+        #info-panel.ui .ui-code {
+            display: block;
+            font-size: 30px;
+            font-weight: 700;
+            line-height: 1.05;
+            letter-spacing: 0.02em;
+        }
+        #info-panel.ui .ui-city {
+            display: block;
+            margin-top: 2px;
+            font-size: 13px;
+            font-weight: 400;
+            line-height: 1.3;
+            color: rgba(255, 255, 255, 0.82);
+        }
+        #info-panel.ui .ui-city:empty { display: none; }
+
+        #info-panel.ui #destination-row { text-align: right; }
+        #info-panel.ui #destination-row .location-value { align-items: flex-end; }
+        #info-panel.ui #destination-row .info-label { align-self: flex-end; }
+        /* The arrow between the two, centred on the column gap. */
+        #info-panel.ui #origin-row { position: relative; }
+        #info-panel.ui #origin-row::after {
+            content: '→';
+            position: absolute;
+            right: -14px;
+            top: 36px;
+            font-size: 20px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        /* Aircraft: maker on top, the model detail beneath it. */
+        #info-panel.ui .aircraft-value {
+            display: flex;
+            flex-direction: column;
+        }
+        #info-panel.ui .ui-maker:not(:empty) {
+            display: block;
+        }
+        #info-panel.ui .ui-maker:not(:empty) + #aircraft-type {
+            font-size: 12px;
+            font-weight: 400;
+            color: rgba(255, 255, 255, 0.82);
+        }
+
         #status {
             position: fixed;
             top: 20px;
@@ -856,6 +1036,8 @@
             <span class="info-value location-value">
                 <span id="origin">-</span>
                 <small class="location-sub" id="origin-sub"></small>
+                <span class="ui-code" id="origin-code">-</span>
+                <small class="ui-city" id="origin-city"></small>
             </span>
         </div>
         <div class="info-row" id="destination-row">
@@ -863,19 +1045,24 @@
             <span class="info-value location-value">
                 <span id="destination">-</span>
                 <small class="location-sub" id="destination-sub"></small>
+                <span class="ui-code" id="destination-code">-</span>
+                <small class="ui-city" id="destination-city"></small>
             </span>
         </div>
-        <div class="info-row">
+        <div class="info-row" id="altitude-row">
             <span class="info-label">Altitude</span>
             <span class="info-value" id="altitude">-</span>
         </div>
-        <div class="info-row">
+        <div class="info-row" id="speed-row">
             <span class="info-label">Speed</span>
             <span class="info-value" id="speed">-</span>
         </div>
-        <div class="info-row">
+        <div class="info-row" id="aircraft-row">
             <span class="info-label">Aircraft</span>
-            <span class="info-value" id="aircraft-type">-</span>
+            <span class="info-value aircraft-value">
+                <span class="ui-maker" id="aircraft-maker"></span>
+                <span id="aircraft-type">-</span>
+            </span>
         </div>
         <!-- No rel="noreferrer": AeroDataBox's terms forbid suppressing the referrer. -->
         <div class="route-credit" id="route-credit" hidden>
@@ -1278,6 +1465,156 @@
             }
         }
 
+        // --- ?ui card: livery colours and aircraft maker ---
+
+        // Two or three colours per brand, keyed by the short brand from SHORT_BRANDS
+        // so regionals pick up the livery they fly in. Approximate, not official
+        // swatches: they only tint a blurred wash behind the card.
+        const BRAND_COLORS = new Map([
+            ['American', ['#C30019', '#0078D2', '#9DA6AB']],
+            ['Delta', ['#C8102E', '#003A70', '#E01933']],
+            ['United', ['#0033A0', '#6CACE4', '#1B365D']],
+            ['Southwest', ['#304CB2', '#FFBF27', '#C8102E']],
+            ['Alaska', ['#01426A', '#64CCC9', '#48A9C5']],
+            ['JetBlue', ['#003876', '#0033A0', '#5BC2E7']],
+            ['Spirit', ['#FFE600', '#1A1A1A', '#FFC72C']],
+            ['Frontier', ['#007A33', '#4C8C2B', '#B5BD00']],
+            ['Hawaiian', ['#5A2D81', '#D10074', '#F9A2C2']],
+            ['Sun Country', ['#F28C00', '#0D2C6C', '#FDB913']],
+            ['Allegiant', ['#F7B500', '#0075C9', '#FF8200']],
+            ['Breeze', ['#0B1F44', '#1FB5E8', '#7FD3F5']],
+            ['Air Canada', ['#F01428', '#1A1A1A', '#8C8C8C']],
+            ['Rouge', ['#E31837', '#1A1A1A', '#F26B7A']],
+            ['WestJet', ['#00AAA5', '#003D50', '#7FD3CF']],
+            ['Porter', ['#002F5F', '#5B7F95', '#C1C6C8']],
+            ['Transat', ['#00A6DE', '#F7B500', '#1E3A8A']],
+            ['Aeromexico', ['#0B2343', '#E4002B', '#6E7D91']],
+            ['Volaris', ['#A12885', '#00A3AD', '#5C2D91']],
+            ['Copa', ['#0032A0', '#9B8E5E', '#5B7FB5']],
+            ['Avianca', ['#E30613', '#B5121B', '#F2A900']],
+            ['LATAM', ['#1B0088', '#E8114B', '#7C3AED']],
+            ['Lufthansa', ['#05164D', '#FFAD00', '#3A4A7A']],
+            ['British', ['#075AAA', '#EB2226', '#01295F']],
+            ['Air France', ['#002157', '#ED1C24', '#5B7DB5']],
+            ['KLM', ['#00A1DE', '#003145', '#5CC8F0']],
+            ['Swiss', ['#E2001A', '#1A1A1A', '#F26B7A']],
+            ['Iberia', ['#D7192D', '#FFCC00', '#A50E1E']],
+            ['Virgin', ['#E10A0A', '#5C068C', '#B4008C']],
+            ['Aer Lingus', ['#006272', '#69BE28', '#00A19B']],
+            ['Icelandair', ['#002E6D', '#F3B700', '#3E6BB3']],
+            ['Turkish', ['#C70A0C', '#1A1A1A', '#E8474A']],
+            ['Emirates', ['#D71A21', '#C8A35A', '#5A0A0D']],
+            ['Qatar', ['#5C0632', '#8D1B3D', '#A6A6A6']],
+            ['Etihad', ['#BD8B13', '#4A3C31', '#E1C17A']],
+            ['Singapore', ['#1D2C6F', '#F99F1C', '#3F55A6']],
+            ['Cathay', ['#006564', '#2E8B84', '#A7C9C4']],
+            ['ANA', ['#13448F', '#0A1E5C', '#5B8BD6']],
+            ['JAL', ['#CC0000', '#1A1A1A', '#E85A5A']],
+            ['Korean Air', ['#0064DE', '#9ED8E8', '#00256C']],
+            ['Qantas', ['#E40000', '#1A1A1A', '#F26B6B']],
+            ['Air NZ', ['#1A1A1A', '#00B5AD', '#4D4D4D']],
+            ['FedEx', ['#4D148C', '#FF6600', '#7A3DB8']],
+            ['UPS', ['#351C15', '#FFB500', '#6B4423']],
+            ['Atlas', ['#002A5C', '#C8102E', '#4A6FA5']],
+            ['Kalitta', ['#C8102E', '#1A1A1A', '#8C8C8C']],
+            ['Cargojet', ['#0072CE', '#E4002B', '#1A1A1A']],
+            ['NetJets', ['#1A1A1A', '#8C6D3F', '#4D4D4D']],
+            ['Flexjet', ['#1F2A44', '#B8975A', '#4A5A7A']],
+            ['VistaJet', ['#C8102E', '#D9D9D9', '#8C8C8C']],
+        ]);
+
+        // Everything without a known livery gets a wash by kind of aircraft.
+        const GROUP_COLORS = {
+            military: ['#4B5320', '#7C8B4A', '#2F3518'],
+            helicopter: ['#0F766E', '#14B8A6', '#134E4A'],
+            small: ['#0D95F2', '#38BDF8', '#1E40AF'],
+            business: ['#334155', '#94A3B8', '#1E293B'],
+        };
+        const DEFAULT_COLORS = ['#0D95F2', '#4338CA', '#7DD3FC'];
+
+        const hexToTriple = hex => {
+            const n = parseInt(hex.slice(1), 16);
+            return `${n >> 16} ${(n >> 8) & 255} ${n & 255}`;
+        };
+
+        function liveryColors(plane, airlineCode) {
+            const code = airlineCode ||
+                ((plane.callsign || '').match(/^([A-Z]{3})[0-9]/) || [])[1];
+            const brand = code && !plane.limited ? SHORT_BRANDS.get(code) : null;
+            return BRAND_COLORS.get(brand) || GROUP_COLORS[plane.group] || DEFAULT_COLORS;
+        }
+
+        function applyLivery(plane, airlineCode) {
+            const [c1, c2, c3] = liveryColors(plane, airlineCode);
+            infoPanel.style.setProperty('--c1', hexToTriple(c1));
+            infoPanel.style.setProperty('--c2', hexToTriple(c2));
+            infoPanel.style.setProperty('--c3', hexToTriple(c3));
+            // A per-airframe twist of the conic sweep, so two planes of the same
+            // airline don't wear an identical wash.
+            let h = 0;
+            for (const ch of plane.icao24 || '') h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+            infoPanel.style.setProperty('--tilt', `${h % 360}deg`);
+        }
+
+        // Maker by ICAO type code, adding the airliners and bizjets to the small-plane
+        // table above. One list sorted longest-first, so A19N (Airbus) beats A1
+        // (Leonardo) and C130 (Lockheed) beats C1 (Cessna).
+        const MAKER_ANY = [
+            ['B37', 'Boeing'], ['B38', 'Boeing'], ['B39', 'Boeing'], ['B3X', 'Boeing'],
+            ['B7', 'Boeing'], ['C17', 'Boeing'], ['K35', 'Boeing'], ['E3', 'Boeing'],
+            ['P8', 'Boeing'], ['MD1', 'Boeing'], ['MD8', 'Boeing'], ['MD9', 'Boeing'],
+            ['DC1', 'McDonnell Douglas'],
+            ['A19N', 'Airbus'], ['A20N', 'Airbus'], ['A21N', 'Airbus'], ['A3', 'Airbus'],
+            ['A400', 'Airbus'], ['BCS', 'Airbus'],
+            ['E17', 'Embraer'], ['E19', 'Embraer'], ['E29', 'Embraer'], ['E75', 'Embraer'],
+            ['E13', 'Embraer'], ['E14', 'Embraer'], ['E35', 'Embraer'], ['E45', 'Embraer'],
+            ['E50P', 'Embraer'], ['E55P', 'Embraer'], ['E545', 'Embraer'], ['E550', 'Embraer'],
+            ['CRJ', 'Bombardier'], ['CL3', 'Bombardier'], ['CL6', 'Bombardier'],
+            ['GL', 'Bombardier'], ['LJ', 'Learjet'],
+            ['DH8', 'De Havilland'], ['DHC', 'De Havilland'], ['AT4', 'ATR'], ['AT7', 'ATR'],
+            ['C5', 'Cessna'], ['C6', 'Cessna'], ['C7', 'Cessna'], ['C130', 'Lockheed'],
+            ['C30J', 'Lockheed'],
+            ['GLF', 'Gulfstream'], ['GA', 'Gulfstream'], ['G150', 'Gulfstream'],
+            ['G280', 'Gulfstream'], ['GALX', 'Gulfstream'], ['ASTR', 'Gulfstream'],
+            ['F2TH', 'Dassault'], ['F900', 'Dassault'], ['FA', 'Dassault'],
+            ['H25', 'Hawker'], ['HDJT', 'Honda'], ['PC24', 'Pilatus'], ['SF50', 'Cirrus'],
+            ['EA50', 'Eclipse'], ['BE40', 'Beechcraft'], ['PRM1', 'Beechcraft'],
+            ['H60', 'Sikorsky'], ['V22', 'Bell'],
+            ...MAKER_BY_TYPE,
+        ].sort((a, b) => b[0].length - a[0].length);
+
+        // The card's maker line, and the detail with any leading maker name trimmed
+        // off: "BOEING 737-800" -> "737-800". MAKER_BY_TYPE says "MD" and "TBM" where
+        // a card has room for the company.
+        const MAKER_DISPLAY = { MD: 'MD Helicopters', TBM: 'Daher' };
+        function aircraftMaker(typeCode, desc) {
+            const maker = prefixLookup(MAKER_ANY, typeCode) || makerFromDesc(desc);
+            return maker ? MAKER_DISPLAY[maker] || maker : null;
+        }
+        function aircraftDetail(text, maker) {
+            if (!text) return '';
+            let detail = String(text).trim();
+            // Strip the maker as written, or the feed's own first word for it
+            // ("BOEING", "AIRBUS", "Canadair"), if that's what the text opens with.
+            for (const word of [maker, ...(maker === 'Bombardier' ? ['Canadair'] : [])]) {
+                if (word && detail.toLowerCase().startsWith(word.toLowerCase() + ' ')) {
+                    detail = detail.slice(word.length + 1).trim();
+                }
+            }
+            return detail;
+        }
+
+        // "Nassau, Bahamas": the city and country, without the state or province.
+        // US and UK are shortened to keep the half-width column to two lines. When the
+        // source has no city, the region stands in so the line isn't blank.
+        const SHORT_COUNTRY = { US: 'USA', GB: 'UK' };
+        function airportCity(airport, region) {
+            const iso = airport.countryiso2;
+            const country = iso && (SHORT_COUNTRY[iso] ||
+                (REGION_NAMES ? REGION_NAMES.of(iso) : iso));
+            return [airport.location || region, country].filter(Boolean).join(', ');
+        }
+
         // Global state
         let userLocation = null;
         let deviceOrientation = { alpha: 0, beta: 0, gamma: 0 };
@@ -1343,6 +1680,11 @@
         // Append ?callsign to the URL to put the raw callsign in the pills instead of
         // the brand or aircraft kind, for comparing the two.
         const callsignMode = new URLSearchParams(location.search).has('callsign');
+
+        // Append ?ui to the URL for the redesigned plane card: glass tinted with the
+        // airline's colours, airport codes side by side, and the aircraft's maker.
+        const uiMode = new URLSearchParams(location.search).has('ui');
+        if (uiMode) infoPanel.classList.add('ui');
 
         // Which groups get pills, remembered on this phone between visits.
         // Versioned: v2 started everyone over on All when it became the default.
@@ -2822,6 +3164,7 @@
                     registration: data.Registration,
                     type: data.Type,
                     owner: data.RegisteredOwners,
+                    typeCode: data.ICAOTypeCode || null,
                     source: 'hexdb',
                 };
             } catch (error) {
@@ -2879,6 +3222,12 @@
                 destination: destination.name || destination.iata,
                 originSub: subLocation(origin, originRegion),
                 destinationSub: subLocation(destination, destRegion),
+                // The ?ui card shows the code people know from tickets, and the city.
+                airlineCode: airlineCode || null,
+                originCode: origin.iata || origin.icao || null,
+                destinationCode: destination.iata || destination.icao || null,
+                originCity: airportCity(origin, originRegion),
+                destinationCity: airportCity(destination, destRegion),
                 source,
             };
         }
@@ -3040,9 +3389,31 @@
 
         // Set an origin/destination row: the airport name, and the small city/region/
         // country line beneath it. An empty sub line collapses via CSS.
-        function setLocation(id, name, sub) {
+        // code and city are the ?ui card's version of the same pair.
+        function setLocation(id, name, sub, code, city) {
             document.getElementById(id).textContent = name || 'Unavailable';
             document.getElementById(id + '-sub').textContent = (name && sub) ? sub : '';
+            // No code (not found, withheld): a dash where the code goes, and the
+            // reason in the small line rather than at headline size.
+            document.getElementById(id + '-code').textContent = code || '—';
+            document.getElementById(id + '-city').textContent =
+                code ? city || '' : name || 'Unavailable';
+        }
+
+        // The Aircraft value: maker on its own line in the ?ui card, model beneath.
+        // The classic card ignores the maker and shows the text as before.
+        function setAircraft(plane, text, typeCode) {
+            const maker = aircraftMaker(typeCode || plane.aircraft_type, plane.aircraft_desc);
+            const typeEl = document.getElementById('aircraft-type');
+            const makerEl = document.getElementById('aircraft-maker');
+            if (!uiMode) {
+                typeEl.textContent = text;
+                return;
+            }
+            const detail = aircraftDetail(text, maker);
+            makerEl.textContent = maker || '';
+            // Nothing left after the maker ("Boeing" alone): fall back to the code.
+            typeEl.textContent = detail || typeCode || plane.aircraft_type || '';
         }
 
         // Show detailed plane information
@@ -3068,9 +3439,9 @@
             document.getElementById('speed').textContent = `${speedKnots} knots`;
             
             document.getElementById('route-credit').hidden = true;
-            document.getElementById('aircraft-type').textContent =
-                plane.aircraft_desc || plane.aircraft_type ||
-                plane.icao24.toUpperCase();
+            setAircraft(plane, plane.aircraft_desc || plane.aircraft_type ||
+                plane.icao24.toUpperCase());
+            if (uiMode) applyLivery(plane);
 
             // Owners who asked for privacy (LADD or PIA) get a note instead of a
             // route, and no lookup is made for them at all.
@@ -3080,8 +3451,8 @@
             infoPanel.classList.add('active');
             if (plane.limited) return;
 
-            setLocation('origin', 'Loading...', '');
-            setLocation('destination', 'Loading...', '');
+            setLocation('origin', 'Loading...', '', '…');
+            setLocation('destination', 'Loading...', '', '…');
 
             // Fetch route information in the background
             const routeInfo = await getRouteInfo(plane);
@@ -3108,13 +3479,18 @@
                 // the plane actually is, so we are withholding an answer rather than
                 // failing to find one. setLocation renders 'Unavailable' for a missing
                 // name and hides the sub line.
-                setLocation('origin', routeInfo.origin, routeInfo.originSub);
-                setLocation('destination', routeInfo.destination, routeInfo.destinationSub);
+                setLocation('origin', routeInfo.origin, routeInfo.originSub,
+                    routeInfo.originCode, routeInfo.originCity);
+                setLocation('destination', routeInfo.destination, routeInfo.destinationSub,
+                    routeInfo.destinationCode, routeInfo.destinationCity);
+                // The route's operator can differ from the callsign's (or the feed
+                // had none), so recolour from it.
+                if (uiMode && routeInfo.airlineCode) applyLivery(plane, routeInfo.airlineCode);
                 document.getElementById('route-credit').hidden =
                     !routeInfo.source.includes('aerodatabox');
 
                 if (routeInfo.type) {
-                    document.getElementById('aircraft-type').textContent = routeInfo.type;
+                    setAircraft(plane, routeInfo.type, routeInfo.typeCode);
                 }
             } else {
                 // Neither source knows this flight: common for charter and private
