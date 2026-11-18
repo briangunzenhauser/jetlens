@@ -324,7 +324,7 @@
            .ui class is set from the script). The classic card ignores the ui-only
            elements below, and the ui card hides the classic ones, so both share one
            set of markup and one fill-in routine. */
-        .ui-code, .ui-city, .ui-maker, .ui-operated { display: none; }
+        .ui-code, .ui-city, .ui-maker, .ui-operated, .ui-mph { display: none; }
 
         /* Kept to half the screen at most, so the sky the plane is in stays visible
            above it. dvh where supported, so iOS's toolbar doesn't count. */
@@ -503,6 +503,19 @@
         #info-panel.ui .ui-maker:not(:empty) {
             display: block;
         }
+        /* Speed: knots, with mph beneath for anyone who doesn't think in knots.
+           Same lighter line as the aircraft detail. */
+        #info-panel.ui .speed-value {
+            display: flex;
+            flex-direction: column;
+        }
+        #info-panel.ui .ui-mph:not(:empty) {
+            display: block;
+            font-size: 12px;
+            font-weight: 400;
+            color: rgba(255, 255, 255, 0.82);
+        }
+
         #info-panel.ui .ui-maker:not(:empty) + #aircraft-type {
             font-size: 12px;
             font-weight: 400;
@@ -1289,7 +1302,10 @@
         </div>
         <div class="info-row" id="speed-row">
             <span class="info-label">Speed</span>
-            <span class="info-value" id="speed">-</span>
+            <span class="info-value speed-value">
+                <span id="speed">-</span>
+                <small class="ui-mph" id="speed-mph"></small>
+            </span>
         </div>
         <div class="info-row" id="aircraft-row">
             <span class="info-label">Aircraft</span>
@@ -3915,6 +3931,9 @@
             
             const speedKnots = plane.velocity ? Math.round(plane.velocity * 1.94384) : 0;
             document.getElementById('speed').textContent = `${speedKnots} knots`;
+            // Shown only by ?ui, as the line under the knots.
+            const speedMph = plane.velocity ? Math.round(plane.velocity * 2.23694) : 0;
+            document.getElementById('speed-mph').textContent = `${speedMph} mph`;
             
             document.getElementById('route-credit').hidden = true;
             setAircraft(plane, plane.aircraft_desc || plane.aircraft_type ||
