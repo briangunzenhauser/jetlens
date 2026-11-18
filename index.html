@@ -567,6 +567,49 @@
         #status.collapsed #plane-count { display: none; }
         #status.collapsed #status-toggle { margin-left: 0; }
 
+        /* ?ui: the bar carries only the direction and tilt; the coordinates were
+           for debugging, not for looking at the sky. The fold toggle becomes a
+           filled circle with a drawn chevron, since the small text arrow was easy
+           to miss. */
+        #status.ui #status-location { display: none; }
+        #status.ui #status-body { justify-content: flex-start; }
+        #status.ui {
+            padding: 4px 4px 4px 14px;
+            background: rgba(0, 0, 0, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            backdrop-filter: blur(16px) saturate(140%);
+            -webkit-backdrop-filter: blur(16px) saturate(140%);
+        }
+        #status.ui.collapsed { padding: 3px; border-radius: 999px; }
+        #status.ui #status-toggle {
+            position: relative;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.22);
+            font-size: 0; /* hide the text arrow; the chevron below replaces it */
+            transition: background 0.2s;
+        }
+        #status.ui #status-toggle:active { background: rgba(255, 255, 255, 0.36); }
+        #status.ui #status-toggle::before {
+            content: '';
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 9px;
+            height: 9px;
+            border: solid #fff;
+            border-width: 2.5px 2.5px 0 0;
+            border-radius: 1px;
+            /* Points up (fold away) while open... */
+            transform: translate(-50%, -25%) rotate(-45deg);
+            transition: transform 0.2s;
+        }
+        /* ...and down (bring back) while folded. */
+        #status.ui.collapsed #status-toggle::before {
+            transform: translate(-50%, -75%) rotate(135deg);
+        }
+
         /* Fixed height with centred items rather than padding around a baseline
            row: on a baseline row the descender space below the text left the
            letters sitting high. line-height 1 makes each item's box its own font
@@ -1684,7 +1727,10 @@
         // Append ?ui to the URL for the redesigned plane card: glass tinted with the
         // airline's colours, airport codes side by side, and the aircraft's maker.
         const uiMode = new URLSearchParams(location.search).has('ui');
-        if (uiMode) infoPanel.classList.add('ui');
+        if (uiMode) {
+            infoPanel.classList.add('ui');
+            document.getElementById('status').classList.add('ui');
+        }
 
         // Which groups get pills, remembered on this phone between visits.
         // Versioned: v2 started everyone over on All when it became the default.
