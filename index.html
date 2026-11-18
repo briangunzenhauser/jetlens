@@ -324,7 +324,7 @@
            .ui class is set from the script). The classic card ignores the ui-only
            elements below, and the ui card hides the classic ones, so both share one
            set of markup and one fill-in routine. */
-        .ui-code, .ui-city, .ui-maker { display: none; }
+        .ui-code, .ui-city, .ui-maker, .ui-operated { display: none; }
 
         /* Kept to half the screen at most, so the sky the plane is in stays visible
            above it. dvh where supported, so iOS's toolbar doesn't count. */
@@ -342,6 +342,7 @@
             grid-template-columns: repeat(6, minmax(0, 1fr));
             grid-template-areas:
                 "airline airline airline airline airline airline"
+                "operated operated operated operated operated operated"
                 "flight  flight  flight  flight  flight  flight"
                 "note    note    note    note    note    note"
                 "origin  origin  origin  dest    dest    dest"
@@ -390,6 +391,15 @@
             color: #fff;
             margin: 0;
             padding-right: 44px; /* clear of the close button */
+        }
+
+        /* "Operated by Endeavor Air" under a regional flight's mainline brand. */
+        #info-panel.ui .ui-operated:not(:empty) {
+            display: block;
+            grid-area: operated;
+            margin-top: 2px;
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.82);
         }
 
         #info-panel.ui h2 {
@@ -1249,6 +1259,7 @@
         <button id="close-btn">×</button>
         <h2 id="flight-number">-</h2>
         <div class="airline" id="airline-name">-</div>
+        <div class="ui-operated" id="operated-by"></div>
         <!-- Shown instead of origin and destination for owners who asked for privacy. -->
         <p class="private-note" id="private-note" hidden>
             The owner of this aircraft has asked that its flights stay private, so JetLens
@@ -1535,7 +1546,13 @@
         // Airliner ICAO type codes, for airliners that turn up without a callsign
         // (a live sample had a JetBlue A321neo, a Southwest 737 MAX and a Delta
         // 737-900 that way) and so can't be placed by their airline code.
-        const AIRLINER_TYPE = /^(A3\d\d|A[12]\dN|A19N|BCS[13]|B7\d\d|B7\dW|B77[LW]|B3[789X]M|E1[79]\d|E7[05][LS]?|E29\d|E135|E145|E35L|E45X|CRJ\d|DH8[A-D]|AT[47]\d|MD[189]\d|B46\d|RJ\d\d|SF34|SB20|E120|D328|J328)$/;
+        const AIRLINER_TYPE = /^(A3\d\d|A[12]\dN|A19N|BCS[13]|B7\d\d|B7\dW|B77[LW]|B3[789X]M|E1[79]\d|E7[05][LS]?|E29\d|E135|E145|E45X|CRJ\d|DH8[A-D]|AT[47]\d|MD[189]\d|B46\d|RJ\d\d|SF34|SB20|E120|D328|J328)$/;
+
+        // ?ui additions to the business lists. Slate (SGX) flies VIP CRJ-200s as
+        // private charters, so it belongs with NetJets and Flexjet even though a
+        // CRJ is airliner-sized. E35L is the Embraer Legacy 600/650 bizjet.
+        const UI_BUSINESS_OPERATORS = new Set([...BUSINESS_OPERATORS, 'SGX']);
+        const UI_BUSINESS_JET_TYPES = new Set([...BUSINESS_JET_TYPES, 'E35L']);
 
         // Types that are helicopters even when the feed's category is missing.
         const HELICOPTER_TYPE = /^(H\d\d|H47|H500|R22|R44|R66|B06|B407|B429|B412|AS\d\d|EC\d\d|A1[0-6]9|S76|S92|EN28)$/;
@@ -1562,7 +1579,7 @@
             if ((ac.dbFlags & 1) || MILITARY_CALLSIGN.test(callsign)) return 'military';
             if (category === 'A7' || HELICOPTER_TYPE.test(ac.t || '')) return 'helicopter';
             if (prefix && (CARRIERS.has(prefix) || CARGO_CARRIERS.has(prefix))) return 'airline';
-            if ((prefix && BUSINESS_OPERATORS.has(prefix)) || BUSINESS_JET_TYPES.has(ac.t)) {
+            if ((prefix && UI_BUSINESS_OPERATORS.has(prefix)) || UI_BUSINESS_JET_TYPES.has(ac.t)) {
                 return 'business';
             }
             // Regional jets and turboprops report category A2, same as a Piper, so
@@ -1583,7 +1600,7 @@
                 case 'small': return 'prop';
             }
             if (ac.category === 'A7' || HELICOPTER_TYPE.test(ac.t || '')) return 'heli';
-            if (BUSINESS_JET_TYPES.has(ac.t)) return 'bizjet';
+            if (UI_BUSINESS_JET_TYPES.has(ac.t)) return 'bizjet';
             if (ac.category === 'A1') return 'prop';
             return 'airliner';
         }
@@ -1635,6 +1652,7 @@
             ['SWA', 'Southwest'], ['ASA', 'Alaska'], ['JBU', 'JetBlue'],
             ['NKS', 'Spirit'], ['FFT', 'Frontier'], ['HAL', 'Hawaiian'],
             ['SCX', 'Sun Country'], ['AAY', 'Allegiant'], ['MXY', 'Breeze'],
+            ['VXP', 'Avelo'], ['JSX', 'JSX'], ['SGX', 'Slate'],
 
             ['SKW', 'SkyWest'], ['RPA', 'Republic'],
             ['QXE', 'Alaska'], ['ENY', 'American'], ['EDV', 'Delta'],
@@ -1885,7 +1903,11 @@
             ['F2TH', 'Dassault'], ['F900', 'Dassault'], ['FA', 'Dassault'],
             ['H25', 'Hawker'], ['HDJT', 'Honda'], ['PC24', 'Pilatus'], ['SF50', 'Cirrus'],
             ['EA50', 'Eclipse'], ['BE40', 'Beechcraft'], ['PRM1', 'Beechcraft'],
-            ['H60', 'Sikorsky'], ['V22', 'Bell'],
+            ['H60', 'Sikorsky'], ['V22', 'Bell'], ['B505', 'Bell'],
+            ['E300', 'Extra'], ['E330', 'Extra'], ['EA30', 'Extra'], ['ST75', 'Stearman'],
+            ['S211', 'SIAI-Marchetti'], ['SF26', 'SIAI-Marchetti'],
+            ['SF34', 'Saab'], ['SB20', 'Saab'], ['P06T', 'Tecnam'], ['P92', 'Tecnam'],
+            ['CH7', 'Champion'], ['BALL', 'Balloon'],
             ...MAKER_BY_TYPE,
         ].sort((a, b) => b[0].length - a[0].length);
 
@@ -1908,6 +1930,47 @@
                 }
             }
             return detail;
+        }
+
+        // Regionals that fly for one mainline only, so a ?ui card can say "Delta Air
+        // Lines, operated by Endeavor Air". SkyWest and Republic fly for several,
+        // and the callsign doesn't say which, so they keep their own name.
+        const REGIONAL_PARENT = new Map([
+            ['EDV', 'DAL'], ['ENY', 'AAL'], ['JIA', 'AAL'], ['PDT', 'AAL'],
+            ['AWI', 'AAL'], ['QXE', 'ASA'], ['ASH', 'UAL'], ['GJS', 'UAL'],
+            ['UCA', 'UAL'], ['JZA', 'ACA'],
+        ]);
+
+        // The ?ui card's airline line for an airline code: the brand on the plane,
+        // and who actually flies it when that's a regional.
+        function cardAirline(code) {
+            const parent = REGIONAL_PARENT.get(code);
+            if (!parent) return null;
+            return {
+                name: CARRIERS.get(parent) || SHORT_BRANDS.get(code),
+                operatedBy: CARRIERS.get(code) || code,
+            };
+        }
+
+        // ?ui pill label. Same idea as pillLabel, but an aircraft we can't name by
+        // brand or family gets its maker ("Boeing", "Embraer") before anything
+        // else, and one the feed gives no type for shows its tail number, or
+        // "Unknown" -- never a raw callsign nobody would recognise.
+        function pillLabelUi(ac, callsign, group) {
+            const prefix = (callsign.match(/^([A-Z]{3})[0-9]/) || [])[1];
+            const maker = aircraftMaker(ac.t, ac.desc);
+            const fallback = ac.r || (/^N\d/.test(callsign) ? callsign : 'Unknown');
+            switch (group) {
+                case 'airline':
+                    return SHORT_BRANDS.get(prefix) || maker || fallback;
+                case 'business':
+                    return SHORT_BRANDS.get(prefix) || prefixLookup(JET_FAMILIES, ac.t) ||
+                        maker || fallback;
+                case 'military':
+                    return militaryDesignation(ac.desc) || maker || fallback;
+                default:
+                    return maker || fallback;
+            }
         }
 
         // "Nassau, Bahamas": the city and country, without the state or province.
@@ -2719,7 +2782,9 @@
                             carrier: isMajorCarrier(callsign),
                             group,
                             shape: uiMode ? aircraftShape(ac, group) : null,
-                            label: pillLabel(ac, callsign, group),
+                            label: uiMode
+                                ? pillLabelUi(ac, callsign, group)
+                                : pillLabel(ac, callsign, group),
                             // Owner asked for limited tracking (LADD, bit 8) or flies on
                             // a privacy address (PIA, bit 4): keep their name off the card.
                             limited: Boolean(ac.dbFlags & 12),
@@ -3255,8 +3320,11 @@
                         }
 
                         const marker = markers[plane.icao24];
-                        marker.style.left = `${position.x}px`;
-                        marker.style.top = `${position.y}px`;
+                        // Whole pixels: text snaps to the pixel grid but an SVG icon
+                        // doesn't, so at fractional positions the ?ui icon wobbled a
+                        // pixel against its label as the plane moved.
+                        marker.style.left = `${Math.round(position.x)}px`;
+                        marker.style.top = `${Math.round(position.y)}px`;
                         marker.style.display = 'block';
                         visibleMarkers.add(plane.icao24);
                     }
@@ -3784,6 +3852,19 @@
 
         // Set an origin/destination row: the airport name, and the small city/region/
         // country line beneath it. An empty sub line collapses via CSS.
+        // ?ui: a regional flight shows its mainline brand, with the regional on a
+        // small line beneath ("Delta Air Lines" / "Operated by Endeavor Air"). The
+        // route's airline code wins over the callsign's when there is one.
+        function setCardAirline(plane, routeCode) {
+            const code = routeCode ||
+                ((plane.callsign || '').match(/^([A-Z]{3})[0-9]/) || [])[1];
+            const branded = code && !plane.limited ? cardAirline(code) : null;
+            if (!branded) return;
+            document.getElementById('airline-name').textContent = branded.name;
+            document.getElementById('operated-by').textContent =
+                `Operated by ${branded.operatedBy}`;
+        }
+
         // code and city are the ?ui card's version of the same pair.
         function setLocation(id, name, sub, code, city) {
             document.getElementById(id).textContent = name || 'Unavailable';
@@ -3826,6 +3907,8 @@
             const groupLabel = AIRCRAFT_GROUPS.find(g => g.id === plane.group)?.label;
             document.getElementById('airline-name').textContent =
                 (!hideOwner && plane.operator) || groupLabel || 'Unknown';
+            document.getElementById('operated-by').textContent = '';
+            if (uiMode) setCardAirline(plane, null);
             
             const altitudeFt = plane.baro_altitude ? Math.round(plane.baro_altitude * 3.28084) : 0;
             document.getElementById('altitude').textContent = `${altitudeFt.toLocaleString()} ft`;
@@ -3865,6 +3948,8 @@
                         routeInfo.airline || owner;
                 }
                 
+                if (uiMode) setCardAirline(plane, routeInfo.airlineCode);
+
                 if (routeInfo.flightNumber) {
                     document.getElementById('flight-number').textContent = routeInfo.flightNumber;
                 }
