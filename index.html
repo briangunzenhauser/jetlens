@@ -3765,10 +3765,14 @@
                         // The leg's own callsign beats the feed's, which can be blank.
                         const code = (leg.callsign || plane.callsign || '')
                             .replace(/\s+/g, '').slice(0, 3);
-                        return {
-                            info: await describeLeg(leg.origin, leg.destination, code, 'aerodatabox'),
-                            reason,
-                        };
+                        const info = await describeLeg(
+                            leg.origin, leg.destination, code, 'aerodatabox');
+                        // Whose flight it is when sold by another airline: Republic's
+                        // RPA5813 is filed as "DL 5813", Delta Air Lines. Only the
+                        // ?ui card uses these.
+                        info.marketing = leg.airline || null;
+                        info.marketingNumber = leg.number || null;
+                        return { info, reason };
                     }
                     return { info: null, reason };
                 }
@@ -3871,11 +3875,24 @@
         // ?ui: a regional flight shows its mainline brand, with the regional on a
         // small line beneath ("Delta Air Lines" / "Operated by Endeavor Air"). The
         // route's airline code wins over the callsign's when there is one.
-        function setCardAirline(plane, routeCode) {
+        //
+        // When AeroDataBox says who sold the flight, that wins: it covers the
+        // regionals that fly for several mainlines (Republic, SkyWest), which the
+        // fixed REGIONAL_PARENT table can't.
+        function setCardAirline(plane, routeCode, marketing) {
+            if (plane.limited) return;
             const code = routeCode ||
                 ((plane.callsign || '').match(/^([A-Z]{3})[0-9]/) || [])[1];
-            const branded = code && !plane.limited ? cardAirline(code) : null;
-            if (!branded) return;
+            let branded = null;
+            if (marketing?.icao && code && marketing.icao !== code) {
+                branded = {
+                    name: CARRIERS.get(marketing.icao) || marketing.name,
+                    operatedBy: CARRIERS.get(code) || code,
+                };
+            } else if (code) {
+                branded = cardAirline(code);
+            }
+            if (!branded || !branded.name) return;
             document.getElementById('airline-name').textContent = branded.name;
             document.getElementById('operated-by').textContent =
                 `Operated by ${branded.operatedBy}`;
@@ -3967,7 +3984,14 @@
                         routeInfo.airline || owner;
                 }
                 
-                if (uiMode) setCardAirline(plane, routeInfo.airlineCode);
+                if (uiMode) {
+                    setCardAirline(plane, routeInfo.airlineCode, routeInfo.marketing);
+                    // "DL 5813" -> "DL5813", to match how flight numbers show here.
+                    if (routeInfo.marketingNumber) {
+                        document.getElementById('flight-number').textContent =
+                            routeInfo.marketingNumber.replace(/\s+/g, '');
+                    }
+                }
 
                 if (routeInfo.flightNumber) {
                     document.getElementById('flight-number').textContent = routeInfo.flightNumber;
@@ -3984,7 +4008,9 @@
                     routeInfo.destinationCode, routeInfo.destinationCity);
                 // The route's operator can differ from the callsign's (or the feed
                 // had none), so recolour from it.
-                if (uiMode && routeInfo.airlineCode) applyLivery(plane, routeInfo.airlineCode);
+                if (uiMode && (routeInfo.marketing?.icao || routeInfo.airlineCode)) {
+                    applyLivery(plane, routeInfo.marketing?.icao || routeInfo.airlineCode);
+                }
                 document.getElementById('route-credit').hidden =
                     !routeInfo.source.includes('aerodatabox');
 
