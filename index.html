@@ -1535,11 +1535,18 @@
         const MILITARY_CALLSIGN = /^(RCH|SPAR|SAM|PAT|EVAC|CNV)\d/;
 
         // Order is the order the filter tab lists them in.
-        // Append ?ui to the URL for the redesigned interface: the glass plane card
-        // tinted with the airline's colours, the direction pill, and the coloured
-        // aircraft icons with five groups instead of seven. Defined up here because
+        // The redesigned interface: the glass plane card tinted with the airline's
+        // colours, the direction pill, and the coloured aircraft icons with five
+        // groups instead of seven. Built behind ?ui and made the default for
+        // everyone on 2026-11-18; set this to false to roll back to the classic
+        // interface, whose code paths are all still here. Defined up here because
         // the group list below depends on it.
-        const uiMode = new URLSearchParams(location.search).has('ui');
+        const uiMode = true;
+
+        // ?ui is kept as the switch for the next round of interface experiments:
+        // gate a change on uiPreview to try it on the live site before everyone
+        // gets it. Nothing uses it right now.
+        const uiPreview = new URLSearchParams(location.search).has('ui');
 
         const AIRCRAFT_GROUPS = uiMode ? [
             // ?ui: cargo folds into Airlines (the card shows FedEx in its own
@@ -2094,7 +2101,13 @@
         const enabledGroups = (() => {
             try {
                 const saved = JSON.parse(localStorage.getItem(GROUPS_STORAGE_KEY));
-                if (Array.isArray(saved)) return new Set(saved);
+                // A choice saved under the old seven groups that names none of the
+                // current ones (only Cargo, say, now folded into Airlines) would
+                // show an empty sky; start such a visitor over on everything. An
+                // empty list is a deliberate "None" and is kept.
+                const valid = Array.isArray(saved) &&
+                    (saved.length === 0 || saved.some(id => AIRCRAFT_GROUPS.some(g => g.id === id)));
+                if (valid) return new Set(saved);
             } catch { /* private mode or bad JSON: fall through to defaults */ }
             // Everything by default, so a first visit doesn't look like it's missing
             // aircraft. Narrowing it down is the visitor's choice.
