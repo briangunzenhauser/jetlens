@@ -1980,20 +1980,22 @@
             };
         }
 
-        // ?ui pill label. Same idea as pillLabel, but an aircraft we can't name by
-        // brand or family gets its maker ("Boeing", "Embraer") before anything
-        // else, and one the feed gives no type for shows its tail number, or
-        // "Unknown" -- never a raw callsign nobody would recognise.
+        // ?ui pill label, on one rule: a company you could hire -- an airline, cargo
+        // carrier or charter/fractional operator -- shows its brand (Delta, FedEx,
+        // NetJets); everything else shows who built it (Cessna, Gulfstream,
+        // Bombardier), never a model family like "Citation". Military keeps its
+        // designation (UH-60), which is what people call it. The icon already says
+        // what kind of aircraft it is, and the card shows both operator and maker.
+        // With no type at all: the tail number, or "Unknown" -- never a raw
+        // callsign nobody would recognise.
         function pillLabelUi(ac, callsign, group) {
             const prefix = (callsign.match(/^([A-Z]{3})[0-9]/) || [])[1];
             const maker = aircraftMaker(ac.t, ac.desc);
             const fallback = ac.r || (/^N\d/.test(callsign) ? callsign : 'Unknown');
             switch (group) {
                 case 'airline':
-                    return SHORT_BRANDS.get(prefix) || maker || fallback;
                 case 'business':
-                    return SHORT_BRANDS.get(prefix) || prefixLookup(JET_FAMILIES, ac.t) ||
-                        maker || fallback;
+                    return SHORT_BRANDS.get(prefix) || maker || fallback;
                 case 'military':
                     return militaryDesignation(ac.desc) || maker || fallback;
                 default:
