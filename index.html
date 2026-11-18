@@ -573,14 +573,25 @@
            to miss. */
         #status.ui #status-location { display: none; }
         #status.ui #status-body { justify-content: flex-start; }
+        /* A pill the size of its content, anchored top-left, folding sideways
+           into just its button rather than spanning the screen. */
         #status.ui {
+            right: auto;
+            max-width: calc(100% - 40px);
+            border-radius: 999px;
             padding: 4px 4px 4px 14px;
             background: rgba(0, 0, 0, 0.6);
             border: 1px solid rgba(255, 255, 255, 0.14);
             backdrop-filter: blur(16px) saturate(140%);
             -webkit-backdrop-filter: blur(16px) saturate(140%);
         }
-        #status.ui.collapsed { padding: 3px; border-radius: 999px; }
+        #status.ui.collapsed { left: 20px; padding: 3px; }
+        /* Even-width digits and a floor on the direction's width, so the pill
+           and its button don't twitch as the heading changes ("N 5°" vs "NW 312°"). */
+        #status.ui #heading-dir {
+            font-variant-numeric: tabular-nums;
+            min-width: 4.6em;
+        }
         #status.ui #status-toggle {
             position: relative;
             width: 32px;
@@ -601,13 +612,13 @@
             border: solid #fff;
             border-width: 2.5px 2.5px 0 0;
             border-radius: 1px;
-            /* Points up (fold away) while open... */
-            transform: translate(-50%, -25%) rotate(-45deg);
+            /* Points left (fold away) while open... */
+            transform: translate(-25%, -50%) rotate(-135deg);
             transition: transform 0.2s;
         }
-        /* ...and down (bring back) while folded. */
+        /* ...and right (bring back) while folded. */
         #status.ui.collapsed #status-toggle::before {
-            transform: translate(-50%, -75%) rotate(135deg);
+            transform: translate(-75%, -50%) rotate(45deg);
         }
 
         /* Fixed height with centred items rather than padding around a baseline
