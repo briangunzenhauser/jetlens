@@ -644,6 +644,112 @@
             transform: translate(50%, -75%) rotate(135deg);
         }
 
+        /* ?ui aircraft icons: the shape says what it is, the colour which group.
+           Picked to read on the midnight pill and to stay apart for red-green
+           colour blindness: silver airliners, gold business jets, cyan small
+           planes, orange helicopters, olive military. */
+        :root {
+            --kind-airline: #E6EDF5;
+            --kind-business: #F2C14E;
+            --kind-small: #5CD6F5;
+            --kind-helicopter: #FF8A3D;
+            --kind-military: #A9BC6A;
+        }
+        .kind-icon {
+            width: 14px;
+            height: 14px;
+            flex: none;
+            fill: var(--kind, var(--kind-airline));
+        }
+        .kind-airline { --kind: var(--kind-airline); }
+        .kind-business { --kind: var(--kind-business); }
+        .kind-small { --kind: var(--kind-small); }
+        .kind-helicopter { --kind: var(--kind-helicopter); }
+        .kind-military { --kind: var(--kind-military); }
+        html.ui .plane-marker-inner {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding-left: 12px;
+        }
+
+        /* ?ui Show list: whole-row tap targets, a round check on the right, off
+           rows dimmed, and All / None in a small header. */
+        html.ui #filter-list.ui-list {
+            padding: 6px;
+            min-width: 230px;
+        }
+        #filter-list .filter-head {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 6px 6px 8px 12px;
+            margin-bottom: 4px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: rgba(255, 255, 255, 0.75);
+        }
+        #filter-list .filter-head .group-count {
+            margin-left: 6px;
+            padding-left: 0;
+        }
+        #filter-list .filter-bulk {
+            margin-left: auto;
+            background: rgba(255, 255, 255, 0.16);
+            border: none;
+            border-radius: 999px;
+            color: #fff;
+            font: inherit;
+            letter-spacing: 0.04em;
+            padding: 5px 10px;
+        }
+        #filter-list .filter-bulk + .filter-bulk { margin-left: 0; }
+        #filter-list .filter-bulk:active { background: rgba(255, 255, 255, 0.3); }
+        #filter-list .filter-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 10px 10px 12px;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 600;
+            transition: opacity 0.15s, background 0.15s;
+        }
+        #filter-list .filter-row:active { background: rgba(255, 255, 255, 0.1); }
+        #filter-list .filter-row .kind-icon { width: 18px; height: 18px; }
+        #filter-list .filter-row.off { opacity: 0.45; }
+        #filter-list .filter-row .group-count {
+            font-weight: 500;
+            padding-left: 8px;
+        }
+        /* The check: an empty ring when off, a filled white circle with a midnight
+           tick when on. Still a real checkbox underneath, for keyboards and
+           screen readers. */
+        #filter-list.ui-list input {
+            appearance: none;
+            -webkit-appearance: none;
+            flex: none;
+            width: 22px;
+            height: 22px;
+            margin: 0 0 0 4px;
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, 0.6);
+            background: transparent center / 12px 12px no-repeat;
+            transition: background-color 0.15s, border-color 0.15s;
+        }
+        #filter-list.ui-list input:checked {
+            border-color: #fff;
+            background-color: #fff;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.2 6.3l2.4 2.4 5.2-5.4' fill='none' stroke='%230B2C4D' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+        }
+        #filter-list.ui-list input:focus-visible {
+            outline: 2px solid #fff;
+            outline-offset: 2px;
+        }
+
         /* ?ui: the start button joins the fully rounded pills. */
         html.ui #start-btn { border-radius: 999px; }
         #status.ui #status-toggle {
@@ -1130,6 +1236,15 @@
         </div>
     </div>
 
+    <!-- ?ui aircraft icons, referenced by <use href="#icon-..."> and coloured by
+         the group via fill. Drawn at 24 units for display at 14-18px. -->
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+        <symbol id="icon-airliner" viewBox="0 0 24 24"><path d="M11 2.2c0-.7.5-1.2 1-1.2s1 .5 1 1.2V9l9 5.2v2l-9-2.7v5.6l2.6 2v1.6L12 21.9l-3.6.8v-1.6l2.6-2v-5.6l-9 2.7v-2L11 9z"/><rect x="5.6" y="11.6" width="1.6" height="3" rx=".8"/><rect x="16.8" y="11.6" width="1.6" height="3" rx=".8"/></symbol>
+        <symbol id="icon-bizjet" viewBox="0 0 24 24"><path d="M11.2 1.8c0-.5.4-.8.8-.8s.8.3.8.8v8.4l6.4 4.2v1.5l-6.4-1.9v5.4l3.4 1.8v1.3L12 21.6l-4.2.9v-1.3l3.4-1.8V14l-6.4 1.9v-1.5l6.4-4.2z"/><rect x="9.3" y="14.6" width="1.5" height="3.2" rx=".75"/><rect x="13.2" y="14.6" width="1.5" height="3.2" rx=".75"/></symbol>
+        <symbol id="icon-prop" viewBox="0 0 24 24"><rect x="8" y="1.2" width="8" height="1.8" rx=".9"/><path d="M10.6 3.6h2.8l.5 4.4H23v3.2h-9.2l-.6 6.8H17v2.8H7v-2.8h3.8l-.6-6.8H1V8h9.1z"/></symbol>
+        <symbol id="icon-heli" viewBox="0 0 24 24"><rect x="2" y="3" width="15" height="1.8" rx=".9"/><rect x="8.6" y="4" width="1.8" height="3"/><path d="M5 9.5C5 7.8 6.6 6.6 9 6.6h1.5c3 0 4.6 2 4.6 4.6v.6H22v2h-7.2c-.5 1.5-2 2.4-4 2.4H8.6C6.4 16.2 5 14.6 5 12.6z"/><rect x="20.4" y="9" width="1.6" height="5.4" rx=".8"/><path d="M6 18.4h9.4v1.6H6z"/><rect x="7.6" y="15.6" width="1.4" height="3.2"/><rect x="12" y="15.6" width="1.4" height="3.2"/></symbol>
+    </svg>
+
     <div id="info-panel">
         <button id="close-btn">×</button>
         <h2 id="flight-number">-</h2>
@@ -1393,7 +1508,21 @@
         const MILITARY_CALLSIGN = /^(RCH|SPAR|SAM|PAT|EVAC|CNV)\d/;
 
         // Order is the order the filter tab lists them in.
-        const AIRCRAFT_GROUPS = [
+        // Append ?ui to the URL for the redesigned interface: the glass plane card
+        // tinted with the airline's colours, the direction pill, and the coloured
+        // aircraft icons with five groups instead of seven. Defined up here because
+        // the group list below depends on it.
+        const uiMode = new URLSearchParams(location.search).has('ui');
+
+        const AIRCRAFT_GROUPS = uiMode ? [
+            // ?ui: cargo folds into Airlines (the card shows FedEx in its own
+            // colours anyway), and Other is gone -- see classifyAircraftUi.
+            { id: 'airline', label: 'Airlines' },
+            { id: 'business', label: 'Business jets' },
+            { id: 'small', label: 'Small planes' },
+            { id: 'helicopter', label: 'Helicopters' },
+            { id: 'military', label: 'Military' },
+        ] : [
             { id: 'airline', label: 'Airlines' },
             { id: 'cargo', label: 'Cargo' },
             { id: 'business', label: 'Business jets' },
@@ -1402,6 +1531,75 @@
             { id: 'military', label: 'Military' },
             { id: 'other', label: 'Other' },
         ];
+
+        // Airliner ICAO type codes, for airliners that turn up without a callsign
+        // (a live sample had a JetBlue A321neo, a Southwest 737 MAX and a Delta
+        // 737-900 that way) and so can't be placed by their airline code.
+        const AIRLINER_TYPE = /^(A3\d\d|A[12]\dN|A19N|BCS[13]|B7\d\d|B7\dW|B77[LW]|B3[789X]M|E1[79]\d|E7[05][LS]?|E29\d|E135|E145|E35L|E45X|CRJ\d|DH8[A-D]|AT[47]\d|MD[189]\d|B46\d|RJ\d\d|SF34|SB20|E120|D328|J328)$/;
+
+        // Types that are helicopters even when the feed's category is missing.
+        const HELICOPTER_TYPE = /^(H\d\d|H47|H500|R22|R44|R66|B06|B407|B429|B412|AS\d\d|EC\d\d|A1[0-6]9|S76|S92|EN28)$/;
+
+        // Not things you look up and see: surface vehicles and obstacles (category
+        // C*), gliders (B1), parachutists (B3), drones (B6), and airport towers that
+        // transmit a position.
+        function isNotAnAircraft(ac) {
+            const category = ac.category || '';
+            return category.startsWith('C') || ['B1', 'B3', 'B6', 'B7'].includes(category) ||
+                ac.t === 'TWR' || ac.t === 'GND';
+        }
+
+        // ?ui grouping: five groups, no Other. Null means "don't show it at all".
+        // Same order of tests as classifyAircraft, with three fixes from a live
+        // sample of ~1,060 aircraft across seven metros (2026-11-18): airliners
+        // without a callsign are placed by type or size, an airliner type is an
+        // airliner even when its category says small (a CRJ-200 and JSX's ERJ-145s
+        // were filed under Small), and leftovers go to Small rather than Other.
+        function classifyAircraftUi(ac, callsign) {
+            if (isNotAnAircraft(ac)) return null;
+            const prefix = (callsign.match(/^([A-Z]{3})[0-9]/) || [])[1];
+            const category = ac.category || null;
+            if ((ac.dbFlags & 1) || MILITARY_CALLSIGN.test(callsign)) return 'military';
+            if (category === 'A7' || HELICOPTER_TYPE.test(ac.t || '')) return 'helicopter';
+            if (prefix && (CARRIERS.has(prefix) || CARGO_CARRIERS.has(prefix))) return 'airline';
+            if ((prefix && BUSINESS_OPERATORS.has(prefix)) || BUSINESS_JET_TYPES.has(ac.t)) {
+                return 'business';
+            }
+            // Regional jets and turboprops report category A2, same as a Piper, so
+            // only their type can promote them; an airline-style callsign isn't
+            // enough (flight schools have those too).
+            if (AIRLINER_TYPE.test(ac.t || '')) return 'airline';
+            if (['A3', 'A4', 'A5'].includes(category)) return 'airline';
+            return 'small';
+        }
+
+        // Which icon a pill wears in ?ui. Military aircraft wear the shape of what
+        // they are (a Black Hawk is a helicopter, a C-17 an airliner) in olive.
+        function aircraftShape(ac, group) {
+            switch (group) {
+                case 'airline': return 'airliner';
+                case 'business': return 'bizjet';
+                case 'helicopter': return 'heli';
+                case 'small': return 'prop';
+            }
+            if (ac.category === 'A7' || HELICOPTER_TYPE.test(ac.t || '')) return 'heli';
+            if (BUSINESS_JET_TYPES.has(ac.t)) return 'bizjet';
+            if (ac.category === 'A1') return 'prop';
+            return 'airliner';
+        }
+
+        // A coloured aircraft icon from the sprite in the markup. The colour comes
+        // from the group (see --kind-* in the CSS), the shape from aircraftShape.
+        const SVG_NS = 'http://www.w3.org/2000/svg';
+        function kindIcon(shape, group) {
+            const svg = document.createElementNS(SVG_NS, 'svg');
+            svg.setAttribute('class', `kind-icon kind-${group}`);
+            svg.setAttribute('aria-hidden', 'true');
+            const use = document.createElementNS(SVG_NS, 'use');
+            use.setAttribute('href', `#icon-${shape}`);
+            svg.appendChild(use);
+            return svg;
+        }
 
         // `ac` is the raw adsb.fi record. First match wins, so the order of these
         // tests matters: a military helicopter is military, a regional jet flying for
@@ -1789,9 +1987,7 @@
         // the brand or aircraft kind, for comparing the two.
         const callsignMode = new URLSearchParams(location.search).has('callsign');
 
-        // Append ?ui to the URL for the redesigned plane card: glass tinted with the
-        // airline's colours, airport codes side by side, and the aircraft's maker.
-        const uiMode = new URLSearchParams(location.search).has('ui');
+        // ?ui (uiMode is defined with AIRCRAFT_GROUPS, further up).
         if (uiMode) {
             document.documentElement.classList.add('ui');
             infoPanel.classList.add('ui');
@@ -1828,6 +2024,98 @@
                 } catch { /* storage unavailable: the choice lasts this visit */ }
             };
 
+            if (uiMode) {
+                buildUiFilterList(list, saveGroups);
+            } else {
+                buildClassicFilterList(list, saveGroups);
+            }
+
+            // Behaves like a small modal: a tap anywhere outside, or Escape, closes it.
+            const backdrop = document.getElementById('filter-backdrop');
+            const setOpen = open => {
+                list.hidden = !open;
+                backdrop.hidden = !open;
+                toggle.setAttribute('aria-expanded', String(open));
+                // ?ui draws its own chevron from aria-expanded.
+                toggle.textContent = uiMode ? 'Show' : open ? 'Show ▾' : 'Show ▴';
+            };
+            if (uiMode) toggle.textContent = 'Show';
+            toggle.addEventListener('click', () => setOpen(list.hidden));
+            backdrop.addEventListener('click', () => setOpen(false));
+            document.addEventListener('keydown', event => {
+                if (event.key === 'Escape' && !list.hidden) setOpen(false);
+            });
+        }
+
+        // ?ui: each row is the whole tap target -- coloured icon, name, count, and a
+        // round check on the right -- with rows that are off dimmed. All and None sit
+        // in a small header instead of an All checkbox row.
+        function buildUiFilterList(list, saveGroups) {
+            list.classList.add('ui-list');
+            const rows = [];
+            const sync = () => {
+                for (const { group, input, row } of rows) {
+                    input.checked = enabledGroups.has(group.id);
+                    row.classList.toggle('off', !input.checked);
+                }
+            };
+
+            const head = document.createElement('div');
+            head.className = 'filter-head';
+            const title = document.createElement('span');
+            title.textContent = 'Aircraft';
+            const allCount = document.createElement('span');
+            allCount.className = 'group-count';
+            allCount.dataset.group = 'all';
+            head.append(title, allCount);
+            for (const [text, turnOn] of [['All', true], ['None', false]]) {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'filter-bulk';
+                button.textContent = text;
+                button.addEventListener('click', () => {
+                    for (const group of AIRCRAFT_GROUPS) {
+                        if (turnOn) enabledGroups.add(group.id);
+                        else enabledGroups.delete(group.id);
+                    }
+                    sync();
+                    saveGroups();
+                    track('group-filter', { group: 'all', on: turnOn });
+                });
+                head.appendChild(button);
+            }
+            list.appendChild(head);
+
+            const SHAPE_FOR_GROUP = {
+                airline: 'airliner', business: 'bizjet', small: 'prop',
+                helicopter: 'heli', military: 'heli',
+            };
+            for (const group of AIRCRAFT_GROUPS) {
+                const row = document.createElement('label');
+                row.className = 'filter-row';
+                const input = document.createElement('input');
+                input.type = 'checkbox';
+                input.addEventListener('change', () => {
+                    if (input.checked) enabledGroups.add(group.id);
+                    else enabledGroups.delete(group.id);
+                    sync();
+                    saveGroups();
+                    track('group-filter', { group: group.id, on: input.checked });
+                });
+                const name = document.createElement('span');
+                name.className = 'filter-name';
+                name.textContent = group.label;
+                const count = document.createElement('span');
+                count.className = 'group-count';
+                count.dataset.group = group.id;
+                row.append(kindIcon(SHAPE_FOR_GROUP[group.id], group.id), name, count, input);
+                list.appendChild(row);
+                rows.push({ group, input, row });
+            }
+            sync();
+        }
+
+        function buildClassicFilterList(list, saveGroups) {
             // "All" is ticked when every group is on, half-ticked when some are.
             // Tapping it turns everything on, or everything off if all were on, so
             // picking just a couple of groups starts from a clean slate.
@@ -1887,22 +2175,6 @@
                 groupInputs.push({ group, input });
             }
             syncAll();
-
-            // Behaves like a small modal: a tap anywhere outside, or Escape, closes it.
-            const backdrop = document.getElementById('filter-backdrop');
-            const setOpen = open => {
-                list.hidden = !open;
-                backdrop.hidden = !open;
-                toggle.setAttribute('aria-expanded', String(open));
-                // ?ui draws its own chevron from aria-expanded.
-                toggle.textContent = uiMode ? 'Show' : open ? 'Show ▾' : 'Show ▴';
-            };
-            if (uiMode) toggle.textContent = 'Show';
-            toggle.addEventListener('click', () => setOpen(list.hidden));
-            backdrop.addEventListener('click', () => setOpen(false));
-            document.addEventListener('keydown', event => {
-                if (event.key === 'Escape' && !list.hidden) setOpen(false);
-            });
         }
 
         // Nearby count per group, written by updateMarkers. Only touches the DOM on
@@ -2419,7 +2691,9 @@
                         // most of the rest.
                         const rate = ac.baro_rate ?? ac.geom_rate ?? null;
                         const callsign = ac.flight ? ac.flight.trim() : 'N/A';
-                        const group = classifyAircraft(ac, callsign);
+                        const group = uiMode
+                            ? classifyAircraftUi(ac, callsign)
+                            : classifyAircraft(ac, callsign);
 
                         return {
                             icao24: ac.hex,
@@ -2444,6 +2718,7 @@
                             // old the position already was when the feed answered.
                             carrier: isMajorCarrier(callsign),
                             group,
+                            shape: uiMode ? aircraftShape(ac, group) : null,
                             label: pillLabel(ac, callsign, group),
                             // Owner asked for limited tracking (LADD, bit 8) or flies on
                             // a privacy address (PIA, bit 4): keep their name off the card.
@@ -2452,6 +2727,8 @@
                             seenPos: ac.seen_pos ?? null
                         };
                     }).filter(plane =>
+                        // ?ui drops ground vehicles, towers, gliders and the like.
+                        plane.group !== null &&
                         plane.latitude &&
                         plane.longitude &&
                         !plane.on_ground &&
@@ -3128,9 +3405,13 @@
             
             const inner = document.createElement('div');
             inner.className = 'plane-marker-inner';
-            const dot = document.createElement('span');
-            dot.className = `group-dot group-${plane.group}`;
-            inner.appendChild(dot);
+            if (uiMode) {
+                inner.appendChild(kindIcon(plane.shape, plane.group));
+            } else {
+                const dot = document.createElement('span');
+                dot.className = `group-dot group-${plane.group}`;
+                inner.appendChild(dot);
+            }
             inner.append(callsignMode ? plane.callsign : plane.label);
             
             marker.appendChild(inner);
