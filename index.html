@@ -1899,9 +1899,18 @@
         // Maker by ICAO type code, adding the airliners and bizjets to the small-plane
         // table above. One list sorted longest-first, so A19N (Airbus) beats A1
         // (Leonardo) and C130 (Lockheed) beats C1 (Cessna).
+        //
+        // Prefixes match anything that starts with them, so a short one has to be
+        // checked against the small planes it would also catch. C17 (the Boeing
+        // C-17) swallowed the Cessna 170/172/175/177 -- the commonest plane in the
+        // sky -- until those were listed, and a bare GL / GA for the Bombardier
+        // Global and Gulfstream caught the Glasair, a motorglider and the Airvan.
+        // Re-check with a live sample (desc vs table) after adding short prefixes.
         const MAKER_ANY = [
             ['B37', 'Boeing'], ['B38', 'Boeing'], ['B39', 'Boeing'], ['B3X', 'Boeing'],
-            ['B7', 'Boeing'], ['C17', 'Boeing'], ['K35', 'Boeing'], ['E3', 'Boeing'],
+            ['B7', 'Boeing'], ['C17', 'Boeing'],
+            ['C170', 'Cessna'], ['C172', 'Cessna'], ['C175', 'Cessna'], ['C177', 'Cessna'],
+            ['C5M', 'Lockheed'], ['K35', 'Boeing'], ['E3', 'Boeing'],
             ['P8', 'Boeing'], ['MD1', 'Boeing'], ['MD8', 'Boeing'], ['MD9', 'Boeing'],
             ['DC1', 'McDonnell Douglas'],
             ['A19N', 'Airbus'], ['A20N', 'Airbus'], ['A21N', 'Airbus'], ['A3', 'Airbus'],
@@ -1910,11 +1919,14 @@
             ['E13', 'Embraer'], ['E14', 'Embraer'], ['E35', 'Embraer'], ['E45', 'Embraer'],
             ['E50P', 'Embraer'], ['E55P', 'Embraer'], ['E545', 'Embraer'], ['E550', 'Embraer'],
             ['CRJ', 'Bombardier'], ['CL3', 'Bombardier'], ['CL6', 'Bombardier'],
-            ['GL', 'Bombardier'], ['LJ', 'Learjet'],
+            ['GL5T', 'Bombardier'], ['GL6T', 'Bombardier'], ['GL7T', 'Bombardier'],
+            ['GLEX', 'Bombardier'], ['LJ', 'Learjet'],
+            ['GLAS', 'Glasair'], ['GLST', 'Glasair'], ['CH75', 'Zenith'],
             ['DH8', 'De Havilland'], ['DHC', 'De Havilland'], ['AT4', 'ATR'], ['AT7', 'ATR'],
             ['C5', 'Cessna'], ['C6', 'Cessna'], ['C7', 'Cessna'], ['C130', 'Lockheed'],
             ['C30J', 'Lockheed'],
-            ['GLF', 'Gulfstream'], ['GA', 'Gulfstream'], ['G150', 'Gulfstream'],
+            ['GLF', 'Gulfstream'], ['GA5C', 'Gulfstream'], ['GA6C', 'Gulfstream'],
+            ['GA7C', 'Gulfstream'], ['GA8C', 'Gulfstream'], ['G150', 'Gulfstream'],
             ['G280', 'Gulfstream'], ['GALX', 'Gulfstream'], ['ASTR', 'Gulfstream'],
             ['F2TH', 'Dassault'], ['F900', 'Dassault'], ['FA', 'Dassault'],
             ['H25', 'Hawker'], ['HDJT', 'Honda'], ['PC24', 'Pilatus'], ['SF50', 'Cirrus'],
