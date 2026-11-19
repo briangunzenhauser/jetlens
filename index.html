@@ -550,6 +550,9 @@
         #info-panel.ui #destination-row { text-align: right; }
         #info-panel.ui #destination-row .location-value { align-items: flex-end; }
         #info-panel.ui #destination-row .info-label { align-self: flex-end; }
+        /* The time stretches to its column (so fitEndTimes can measure it), and
+           .info-value sets text-align: left, so right-align it explicitly. */
+        #info-panel.ui #destination-time { text-align: right; }
         /* The arrow between the two, centred on the column gap. */
         #info-panel.ui #origin-row { position: relative; }
         #info-panel.ui #origin-row::after {
