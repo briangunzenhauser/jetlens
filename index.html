@@ -335,8 +335,9 @@
             --c2: 67 56 202;
             --c3: 125 211 252;
             --tilt: 210deg;
-            max-height: 50vh;
-            max-height: 50dvh;
+            /* Never scrolls: it grows to fit what it shows instead. */
+            max-height: none;
+            overflow: visible;
             padding: 20px 20px calc(16px + env(safe-area-inset-bottom));
             display: grid;
             grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -487,6 +488,9 @@
         #info-panel.ui .ui-time:not(:empty) {
             display: block;
             margin-top: 3px;
+            /* One line always; fitEndTimes shrinks the text if it won't fit. */
+            white-space: nowrap;
+            align-self: stretch;
             font-size: 13px;
             font-weight: 600;
             line-height: 1.3;
@@ -4538,14 +4542,31 @@
             if (end.scheduled == null) return;
             const diff = Math.round((when - end.scheduled) / 60000);
             let note, late = false;
-            if (diff >= 15) { note = `delayed ${formatDuration(diff)}`; late = true; }
+            // Hours in short form ("1h 39m") so the line fits half the card.
+            const short = min => min < 60 ? `${min} min`
+                : `${Math.floor(min / 60)}h${min % 60 ? ` ${min % 60}m` : ''}`;
+            if (diff >= 15) { note = `delayed ${short(diff)}`; late = true; }
             else if (diff >= 5) note = `${diff} min late`;
-            else if (diff <= -5) note = `${formatDuration(-diff)} early`;
+            else if (diff <= -5) note = `${short(-diff)} early`;
             else note = 'on time';
             const span = document.createElement('span');
             span.className = 'time-note' + (late ? ' late' : '');
             span.textContent = ` (${note})`;
             el.append(span);
+        }
+
+        // Keep each time on one line: step the text down until it fits its half
+        // of the card (a long delay on a narrow phone), never below 10px.
+        function fitEndTimes() {
+            ['origin-time', 'destination-time'].forEach(id => {
+                const el = document.getElementById(id);
+                el.style.fontSize = '';
+                let size = 13;
+                while (el.scrollWidth > el.clientWidth + 0.5 && size > 10) {
+                    size -= 0.5;
+                    el.style.fontSize = `${size}px`;
+                }
+            });
         }
 
         // The route the card is showing, so the bar can follow the plane.
@@ -4608,6 +4629,7 @@
             setEndTime('destination-time', info.arrival);
             document.getElementById('trip-row').hidden = false;
             infoPanel.classList.add('has-trip');
+            fitEndTimes();
             renderTrip();
             tripTimer = setInterval(renderTrip, 5000);
         }
