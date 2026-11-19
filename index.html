@@ -324,7 +324,7 @@
            .ui class is set from the script). The classic card ignores the ui-only
            elements below, and the ui card hides the classic ones, so both share one
            set of markup and one fill-in routine. */
-        .ui-code, .ui-city, .ui-maker, .ui-operated, .ui-mph { display: none; }
+        .ui-code, .ui-city, .ui-time, .ui-maker, .ui-operated, .ui-mph, .ui-trip { display: none; }
 
         /* Kept to half the screen at most, so the sky the plane is in stays visible
            above it. dvh where supported, so iOS's toolbar doesn't count. */
@@ -346,6 +346,7 @@
                 "flight  flight  flight  flight  flight  flight"
                 "note    note    note    note    note    note"
                 "origin  origin  origin  dest    dest    dest"
+                "trip    trip    trip    trip    trip    trip"
                 "alt     alt     speed   speed   craft   craft"
                 "credit  credit  credit  credit  credit  credit";
             column-gap: 12px;
@@ -480,6 +481,67 @@
             color: rgba(255, 255, 255, 0.82);
         }
         #info-panel.ui .ui-city:empty { display: none; }
+
+        /* Departure and arrival times under the city: local to each airport, as
+           on a ticket, with the gap from schedule. Only delays are coloured. */
+        #info-panel.ui .ui-time:not(:empty) {
+            display: block;
+            margin-top: 3px;
+            font-size: 13px;
+            font-weight: 600;
+            line-height: 1.3;
+            font-variant-numeric: tabular-nums;
+        }
+        #info-panel.ui .ui-time .time-note { font-weight: 400; color: rgba(255, 255, 255, 0.82); }
+        #info-panel.ui .ui-time .time-note.late { font-weight: 600; color: #F2C14E; }
+
+        /* Progress: green for the distance flown, dashed for what's left, the
+           plane where it is now. Full width, since the times fill each half. */
+        #info-panel.ui .ui-trip {
+            grid-area: trip;
+            display: grid;
+            gap: 8px;
+            padding: 2px 0 14px;
+        }
+        #info-panel.ui .ui-trip[hidden] { display: none; }
+        #info-panel.ui.has-trip #origin-row::after { display: none; }
+        .trip-track { position: relative; height: 18px; margin: 0 6px; }
+        .trip-rest {
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 8px;
+            border-top: 2px dashed rgba(255, 255, 255, 0.45);
+        }
+        .trip-done {
+            position: absolute;
+            left: 0;
+            top: 7px;
+            height: 4px;
+            border-radius: 2px;
+            background: #34D399;
+            box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18);
+        }
+        .trip-end { position: absolute; top: 4px; width: 10px; height: 10px; border-radius: 50%; }
+        .trip-from { left: -6px; background: #34D399; }
+        .trip-to { right: -6px; border: 2px solid rgba(255, 255, 255, 0.75); background: rgba(10, 12, 20, 0.5); }
+        .trip-plane {
+            position: absolute;
+            top: -3px;
+            width: 24px;
+            height: 24px;
+            margin-left: -12px;
+            fill: #fff;
+            transform: rotate(90deg);
+            filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+        }
+        .trip-text {
+            text-align: center;
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.88);
+            font-variant-numeric: tabular-nums;
+        }
+        .trip-text b { font-weight: 600; color: #fff; }
 
         #info-panel.ui #destination-row { text-align: right; }
         #info-panel.ui #destination-row .location-value { align-items: flex-end; }
@@ -1477,6 +1539,7 @@
                 <small class="location-sub" id="origin-sub"></small>
                 <span class="ui-code" id="origin-code">-</span>
                 <small class="ui-city" id="origin-city"></small>
+                <small class="ui-time" id="origin-time"></small>
             </span>
         </div>
         <div class="info-row" id="destination-row">
@@ -1486,7 +1549,19 @@
                 <small class="location-sub" id="destination-sub"></small>
                 <span class="ui-code" id="destination-code">-</span>
                 <small class="ui-city" id="destination-city"></small>
+                <small class="ui-time" id="destination-time"></small>
             </span>
+        </div>
+        <!-- ?ui: how far along the flight is, with travel time and time left. -->
+        <div class="ui-trip" id="trip-row" hidden>
+            <div class="trip-track" id="trip-track" role="img">
+                <span class="trip-rest"></span>
+                <span class="trip-done" id="trip-done"></span>
+                <span class="trip-end trip-from"></span>
+                <span class="trip-end trip-to"></span>
+                <svg class="trip-plane" id="trip-plane" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-airliner"/></svg>
+            </div>
+            <div class="trip-text" id="trip-text"></div>
         </div>
         <div class="info-row" id="altitude-row">
             <span class="info-label">Altitude</span>
@@ -2208,11 +2283,38 @@
         // US and UK are shortened to keep the half-width column to two lines. When the
         // source has no city, the region stands in so the line isn't blank.
         const SHORT_COUNTRY = { US: 'USA', GB: 'UK' };
+        // "Charlotte, NC, USA": the short state or province, only where people use
+        // one -- US states, Canadian provinces, Australian states. Elsewhere it's
+        // city and country ("London, UK"). hexdb gives the full name.
+        const REGION_ABBR = {
+            US: { Alabama: 'AL', Alaska: 'AK', Arizona: 'AZ', Arkansas: 'AR', California: 'CA',
+                Colorado: 'CO', Connecticut: 'CT', Delaware: 'DE', 'District of Columbia': 'DC',
+                Florida: 'FL', Georgia: 'GA', Hawaii: 'HI', Idaho: 'ID', Illinois: 'IL',
+                Indiana: 'IN', Iowa: 'IA', Kansas: 'KS', Kentucky: 'KY', Louisiana: 'LA',
+                Maine: 'ME', Maryland: 'MD', Massachusetts: 'MA', Michigan: 'MI',
+                Minnesota: 'MN', Mississippi: 'MS', Missouri: 'MO', Montana: 'MT',
+                Nebraska: 'NE', Nevada: 'NV', 'New Hampshire': 'NH', 'New Jersey': 'NJ',
+                'New Mexico': 'NM', 'New York': 'NY', 'North Carolina': 'NC',
+                'North Dakota': 'ND', Ohio: 'OH', Oklahoma: 'OK', Oregon: 'OR',
+                Pennsylvania: 'PA', 'Rhode Island': 'RI', 'South Carolina': 'SC',
+                'South Dakota': 'SD', Tennessee: 'TN', Texas: 'TX', Utah: 'UT', Vermont: 'VT',
+                Virginia: 'VA', Washington: 'WA', 'West Virginia': 'WV', Wisconsin: 'WI',
+                Wyoming: 'WY', 'Puerto Rico': 'PR', Guam: 'GU' },
+            CA: { Alberta: 'AB', 'British Columbia': 'BC', Manitoba: 'MB', 'New Brunswick': 'NB',
+                'Newfoundland and Labrador': 'NL', 'Nova Scotia': 'NS', Ontario: 'ON',
+                'Prince Edward Island': 'PE', Quebec: 'QC', Québec: 'QC', Saskatchewan: 'SK',
+                'Northwest Territories': 'NT', Nunavut: 'NU', Yukon: 'YT' },
+            AU: { 'New South Wales': 'NSW', Victoria: 'VIC', Queensland: 'QLD',
+                'South Australia': 'SA', 'Western Australia': 'WA', Tasmania: 'TAS',
+                'Northern Territory': 'NT', 'Australian Capital Territory': 'ACT' }
+        };
         function airportCity(airport, region) {
             const iso = airport.countryiso2;
             const country = iso && (SHORT_COUNTRY[iso] ||
                 (REGION_NAMES ? REGION_NAMES.of(iso) : iso));
-            return [airport.location || region, country].filter(Boolean).join(', ');
+            const abbr = region && REGION_ABBR[iso]?.[region];
+            return [airport.location || region, airport.location && abbr, country]
+                .filter(Boolean).join(', ');
         }
 
         // Global state
@@ -4182,6 +4284,9 @@
                 destinationCode: destination.iata || destination.icao || null,
                 originCity: airportCity(origin, originRegion),
                 destinationCity: airportCity(destination, destRegion),
+                // For the ?ui progress bar.
+                originPos: origin.lat != null ? { lat: origin.lat, lon: origin.lon } : null,
+                destinationPos: destination.lat != null ? { lat: destination.lat, lon: destination.lon } : null,
                 source,
             };
         }
@@ -4247,6 +4352,10 @@
                         // ?ui card uses these.
                         info.marketing = leg.airline || null;
                         info.marketingNumber = leg.number || null;
+                        // Gate times and each airport's UTC offset, for the ?ui card.
+                        // Absent from routes cached before they were added.
+                        info.departure = leg.departure || null;
+                        info.arrival = leg.arrival || null;
                         return { info, reason };
                     }
                     return { info: null, reason };
@@ -4400,6 +4509,109 @@
             typeEl.textContent = detail || typeCode || plane.aircraft_type || '';
         }
 
+        // ---- ?ui flight progress: times under each city, and a bar between them ----
+
+        // "8:45am" at the airport's own clock, from epoch ms and its UTC offset.
+        function airportClock(ms, utcOffsetMin) {
+            const d = new Date(ms + utcOffsetMin * 60000);
+            const h = d.getUTCHours();
+            const m = String(d.getUTCMinutes()).padStart(2, '0');
+            return `${h % 12 || 12}:${m}${h < 12 ? 'am' : 'pm'}`;
+        }
+
+        // "4 hr 52 min", "45 min", "2 hr".
+        function formatDuration(min) {
+            min = Math.max(0, Math.round(min));
+            const h = Math.floor(min / 60), m = min % 60;
+            if (!h) return `${m} min`;
+            return m ? `${h} hr ${m} min` : `${h} hr`;
+        }
+
+        // One end's time with how it compares to the schedule. Delays count from
+        // 15 minutes, the industry's line; a few minutes either way is on time.
+        function setEndTime(id, end) {
+            const el = document.getElementById(id);
+            el.textContent = '';
+            const when = end && (end.expected ?? end.scheduled);
+            if (!when || end.utcOffsetMin == null) return;
+            el.append(airportClock(when, end.utcOffsetMin));
+            if (end.scheduled == null) return;
+            const diff = Math.round((when - end.scheduled) / 60000);
+            let note, late = false;
+            if (diff >= 15) { note = `delayed ${formatDuration(diff)}`; late = true; }
+            else if (diff >= 5) note = `${diff} min late`;
+            else if (diff <= -5) note = `${formatDuration(-diff)} early`;
+            else note = 'on time';
+            const span = document.createElement('span');
+            span.className = 'time-note' + (late ? ' late' : '');
+            span.textContent = ` (${note})`;
+            el.append(span);
+        }
+
+        // The route the card is showing, so the bar can follow the plane.
+        let tripInfo = null;
+        let tripTimer = null;
+
+        function clearTrip() {
+            tripInfo = null;
+            clearInterval(tripTimer);
+            tripTimer = null;
+            document.getElementById('trip-row').hidden = true;
+            infoPanel.classList.remove('has-trip');
+            document.getElementById('origin-time').textContent = '';
+            document.getElementById('destination-time').textContent = '';
+        }
+
+        // Where the plane is along its route, from its live position: distance
+        // flown over distance flown plus distance to go. The plane icon then always
+        // matches the sky, even when the schedule is off.
+        function renderTrip() {
+            const plane = selectedPlane;
+            const info = tripInfo;
+            if (!plane || !info) return;
+            const pos = extrapolatePlane(plane, Date.now());
+            const flown = calculateDistance(info.originPos.lat, info.originPos.lon, pos.lat, pos.lon);
+            const toGo = calculateDistance(pos.lat, pos.lon, info.destinationPos.lat, info.destinationPos.lon);
+            const fraction = flown + toGo > 0 ? flown / (flown + toGo) : 0;
+            const pct = Math.round(Math.max(0, Math.min(1, fraction)) * 1000) / 10;
+            document.getElementById('trip-done').style.width = `${pct}%`;
+            document.getElementById('trip-plane').style.left = `${pct}%`;
+            document.getElementById('trip-track').setAttribute('aria-label',
+                `${Math.round(pct)}% of the way from ${info.originCode} to ${info.destinationCode}`);
+
+            // Travel time gate to gate; time left from the expected arrival, or,
+            // without one, from distance and ground speed.
+            const dep = info.departure, arr = info.arrival;
+            const depAt = dep && (dep.expected ?? dep.scheduled);
+            const arrAt = arr && (arr.expected ?? arr.scheduled);
+            const text = document.getElementById('trip-text');
+            text.textContent = '';
+            if (depAt && arrAt && arrAt > depAt) {
+                const total = document.createElement('b');
+                total.textContent = `Travel time ${formatDuration((arrAt - depAt) / 60000)}`;
+                const left = (arrAt - Date.now()) / 60000;
+                text.append(total, left > 1
+                    ? ` · ${formatDuration(left)} remaining`
+                    : ' · arriving now');
+            } else if (plane.velocity > 30) {
+                const left = toGo * 1000 / plane.velocity / 60;
+                text.append(left > 1 ? `About ${formatDuration(Math.round(left / 5) * 5 || left)} remaining`
+                    : 'Arriving now');
+            }
+        }
+
+        function showTrip(info) {
+            clearTrip();
+            if (!uiMode || !info.originPos || !info.destinationPos) return;
+            tripInfo = info;
+            setEndTime('origin-time', info.departure);
+            setEndTime('destination-time', info.arrival);
+            document.getElementById('trip-row').hidden = false;
+            infoPanel.classList.add('has-trip');
+            renderTrip();
+            tripTimer = setInterval(renderTrip, 5000);
+        }
+
         // Show detailed plane information
         async function showPlaneInfo(plane) {
             selectedPlane = plane;
@@ -4434,6 +4646,7 @@
 
             // Owners who asked for privacy (LADD or PIA) get a note instead of a
             // route, and no lookup is made for them at all.
+            clearTrip();
             document.getElementById('private-note').hidden = !plane.limited;
             document.getElementById('origin-row').hidden = plane.limited;
             document.getElementById('destination-row').hidden = plane.limited;
@@ -4481,6 +4694,7 @@
                     routeInfo.originCode, routeInfo.originCity);
                 setLocation('destination', routeInfo.destination, routeInfo.destinationSub,
                     routeInfo.destinationCode, routeInfo.destinationCity);
+                if (routeInfo.originCode) showTrip(routeInfo);
                 // The route's operator can differ from the callsign's (or the feed
                 // had none), so recolour from it.
                 if (uiMode && (routeInfo.marketing?.icao || routeInfo.airlineCode)) {
@@ -4504,6 +4718,7 @@
         closeBtn.addEventListener('click', () => {
             infoPanel.classList.remove('active');
             selectedPlane = null;
+            clearTrip();
         });
 
         // Fold the location/direction bar away and back; remembered on this phone.

@@ -88,6 +88,22 @@ const bestTime = (end) =>
     parseTime(end?.revisedTime?.utc) ??
     parseTime(end?.scheduledTime?.utc);
 
+// The card's times for one end of a leg: scheduled and expected-or-actual gate
+// times (epoch ms), and the airport's UTC offset in minutes so the browser can
+// show local time as on a ticket. Gate times rather than runway: a flight that
+// pushed back on time takes off some minutes later, and comparing that with the
+// scheduled gate time would make every departure look late.
+const UTC_OFFSET = /([+-])(\d{2}):?(\d{2})$/;
+function endTimes(end) {
+    const local = end?.scheduledTime?.local || end?.revisedTime?.local || '';
+    const m = local.match(UTC_OFFSET);
+    return {
+        scheduled: parseTime(end?.scheduledTime?.utc),
+        expected: parseTime(end?.revisedTime?.utc) ?? parseTime(end?.predictedTime?.utc),
+        utcOffsetMin: m ? (m[1] === '-' ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3])) : null
+    };
+}
+
 // Only what the panel needs, in the same shape as the free route file's airports
 // so the browser can treat both alike.
 function airport(a) {
@@ -118,6 +134,8 @@ function compactLegs(list) {
                 : null,
             departs: bestTime(f.departure),
             arrives: bestTime(f.arrival),
+            departure: endTimes(f.departure),
+            arrival: endTimes(f.arrival),
             origin: airport(f.departure?.airport),
             destination: airport(f.arrival?.airport)
         }))
