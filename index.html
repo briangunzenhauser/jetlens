@@ -1174,6 +1174,168 @@
             width: 2px;
             transform: translateX(-50%);
         }
+
+        /* ?target: tap to align. A round glass button opposite Show; while
+           aligning, a clear layer over the sky takes the taps (so a pill can't open
+           its card), a banner says what to do and a sheet confirms. */
+        :root { --align-accent: #5CD6F5; }
+        .align-glass,
+        #align-btn {
+            background-color: rgba(10, 12, 20, 0.30);
+            background-image: linear-gradient(180deg,
+                rgba(255, 255, 255, 0.10), rgba(0, 0, 0, 0.25));
+            border: 1px solid rgba(255, 255, 255, 0.22);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+            backdrop-filter: blur(22px) saturate(160%);
+            -webkit-backdrop-filter: blur(22px) saturate(160%);
+            color: #fff;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+        }
+        #align-btn {
+            position: fixed;
+            left: 20px;
+            bottom: 20px;
+            z-index: 100;
+            width: var(--bottom-pill-height);
+            height: var(--bottom-pill-height);
+            border-radius: 50%;
+            display: grid;
+            place-items: center;
+            padding: 0;
+        }
+        #align-btn[hidden] { display: none; }
+        #align-btn svg {
+            width: 22px;
+            height: 22px;
+            fill: none;
+            stroke: #fff;
+            stroke-width: 1.8;
+        }
+        #align-btn.active svg,
+        #align-btn.aligned svg { stroke: var(--align-accent); }
+        #align-layer {
+            position: fixed;
+            inset: 0;
+            z-index: 150;
+            background: rgba(3, 12, 24, 0.28);
+            cursor: crosshair;
+        }
+        #align-layer[hidden] { display: none; }
+        #align-link {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        #align-ring {
+            position: absolute;
+            width: 34px;
+            height: 34px;
+            margin: -17px 0 0 -17px;
+            border: 2px solid var(--align-accent);
+            border-radius: 50%;
+            box-shadow: 0 0 0 4px rgba(92, 214, 245, 0.25);
+            pointer-events: none;
+        }
+        #align-ring[hidden] { display: none; }
+        .plane-marker.align-chosen .plane-marker-inner {
+            border-color: var(--align-accent);
+            box-shadow: 0 0 0 4px rgba(92, 214, 245, 0.35), 0 4px 15px rgba(11, 44, 77, 0.4);
+        }
+        #align-banner {
+            position: fixed;
+            left: 16px;
+            right: 16px;
+            top: 74px;
+            z-index: 210;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 12px 12px 16px;
+            border-radius: 18px;
+        }
+        #align-banner[hidden],
+        #align-sheet[hidden],
+        #align-toast[hidden],
+        #align-reset[hidden] { display: none; }
+        .align-banner-text { flex: 1; display: grid; gap: 2px; }
+        .align-banner-text strong { font-size: 15px; }
+        .align-banner-text span { font-size: 13px; color: rgba(255, 255, 255, 0.8); }
+        #align-cancel,
+        #align-reset,
+        #align-undo {
+            height: 30px;
+            border: 0;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.22);
+            color: #fff;
+            font-size: 13px;
+            font-weight: 600;
+            font-family: inherit;
+            line-height: 1;
+        }
+        #align-cancel { width: 30px; font-size: 18px; }
+        #align-reset, #align-undo { padding: 0 14px; }
+        #align-sheet {
+            position: fixed;
+            left: 12px;
+            right: 12px;
+            bottom: 12px;
+            z-index: 210;
+            display: grid;
+            gap: 12px;
+            padding: 18px 18px 16px;
+            border-radius: 26px;
+            background-color: rgba(10, 12, 20, 0.55);
+        }
+        #align-sheet h2 { font-size: 17px; line-height: 1.25; margin: 0; }
+        #align-sheet p { font-size: 13px; line-height: 1.45; margin: 0; color: rgba(255, 255, 255, 0.85); }
+        .align-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .align-actions button {
+            height: 46px;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.22);
+            background: rgba(255, 255, 255, 0.14);
+            color: #fff;
+            font-size: 15px;
+            font-weight: 600;
+            font-family: inherit;
+            line-height: 1;
+        }
+        .align-actions button.primary { background: #fff; color: #0B2C4D; border-color: #fff; text-shadow: none; }
+        .align-actions button:disabled { opacity: 0.45; }
+        #align-toast {
+            position: fixed;
+            left: 50%;
+            bottom: 76px;
+            transform: translateX(-50%);
+            z-index: 210;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 6px 6px 6px 16px;
+            border-radius: 999px;
+            white-space: nowrap;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        /* Aligned: a dot on the direction, so the pill's width (and its fold
+           button) stay put. Dimmed after a big turn, where the correction may no
+           longer fit. */
+        #status.aligned #heading-dir { position: relative; }
+        #status.aligned #heading-dir::after {
+            content: '';
+            position: absolute;
+            top: -3px;
+            right: 0.5em;
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--align-accent);
+            box-shadow: 0 0 6px var(--align-accent);
+        }
+        #status.aligned.align-stale #heading-dir::after { opacity: 0.35; box-shadow: none; }
     </style>
 </head>
 <body>
@@ -1243,6 +1405,36 @@
     <div id="filter-tab" hidden>
         <div id="filter-list" hidden></div>
         <button id="filter-toggle" type="button" aria-expanded="false" aria-controls="filter-list">Show ▴</button>
+    </div>
+
+    <!-- ?target: tap to align. The user taps a real plane and the compass is
+         turned so its pill lands there. -->
+    <button id="align-btn" type="button" hidden aria-label="Line up the pills with a plane you can see">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.2"/><path d="M12 1.5v4M12 18.5v4M1.5 12h4M18.5 12h4"/></svg>
+    </button>
+    <div id="align-layer" hidden>
+        <svg id="align-link" aria-hidden="true"></svg>
+        <div id="align-ring" hidden></div>
+    </div>
+    <div id="align-banner" class="align-glass" role="status" hidden>
+        <div class="align-banner-text">
+            <strong id="align-banner-title">Tap the plane you see</strong>
+            <span id="align-banner-sub">The plane itself in the sky, not its pill.</span>
+        </div>
+        <button id="align-reset" type="button" hidden>Reset</button>
+        <button id="align-cancel" type="button" aria-label="Stop aligning">×</button>
+    </div>
+    <div id="align-sheet" class="align-glass" hidden>
+        <h2 id="align-title"></h2>
+        <p id="align-body"></p>
+        <div class="align-actions">
+            <button id="align-again" type="button">Pick again</button>
+            <button id="align-confirm" type="button" class="primary">Align</button>
+        </div>
+    </div>
+    <div id="align-toast" class="align-glass" role="status" hidden>
+        <span id="align-toast-text"></span>
+        <button id="align-undo" type="button">Undo</button>
     </div>
 
     <div id="debug" hidden>
@@ -1547,6 +1739,8 @@
         // gate a change on uiPreview to try it on the live site before everyone
         // gets it. Nothing uses it right now.
         const uiPreview = new URLSearchParams(location.search).has('ui');
+        // ?target: tap to align, on trial (Nov 19).
+        const targetMode = new URLSearchParams(location.search).has('target');
 
         const AIRCRAFT_GROUPS = uiMode ? [
             // ?ui: cargo folds into Airlines (the card shows FedEx in its own
@@ -2327,6 +2521,7 @@
                 document.getElementById('debug-save').addEventListener('click', saveFlightLog);
             }
             initFilterTab();
+            if (targetMode) initAlign();
 
             if (previewMode === 'intro') {
                 loading.classList.add('hidden');
@@ -2712,6 +2907,8 @@
                 el.textContent = '—';
                 return;
             }
+
+            updateAlignStale();
 
             // The dead zone covers straight down as well as straight up; say which.
             const bearing = facingBearing();
@@ -3117,6 +3314,12 @@
         let alphaOffset = null;
         let alphaOffsetLevel = false;  // was it measured with the phone held level?
 
+        // ?target: degrees added to the compass by tap to align. The compass's own
+        // error is the dominant one (Nov 19 marks: 13° facing south at ±10° rated
+        // accuracy), so a user who can see a plane is a better reference. Kept
+        // separate from alphaOffset, which keeps tracking the compass underneath.
+        let alignDeg = 0;
+
         // Below this much roll -- the phone's x axis this close to horizontal -- it
         // counts as level. The offset is taken as webkitCompassHeading minus the
         // camera's bearing, and held level that bearing is cleanly defined with no roll
@@ -3199,13 +3402,15 @@
         function orientedMatrix() {
             let alpha = deviceOrientation.alpha;
 
+            // alignDeg (?target) is the user's correction on top of the compass,
+            // added to every bearing the camera reports.
             if (alphaOffset !== null) {
-                alpha = (alpha - alphaOffset + 360) % 360;
+                alpha = ((alpha - alphaOffset - alignDeg) % 360 + 360) % 360;
             } else if (compassHeading !== null) {
                 // Not measured yet (the phone has only been pointed near-vertical):
                 // treat the compass reading as the yaw. Exact while level, off by the
                 // roll otherwise, and replaced as soon as a real measurement lands.
-                alpha = (360 - compassHeading) % 360;
+                alpha = ((360 - compassHeading - alignDeg) % 360 + 360) % 360;
             }
 
             return orientationMatrix(alpha, deviceOrientation.beta, deviceOrientation.gamma);
@@ -3420,6 +3625,7 @@
                 absolute: orientationAbsolute,
                 alphaOffset: round(alphaOffset),
                 offsetLevel: alphaOffsetLevel,
+                alignDeg: round(alignDeg),
                 camAz: round((Math.atan2(forward[0], forward[1]) * deg + 360) % 360),
                 camEl: round(Math.asin(Math.max(-1, Math.min(1, forward[2]))) * deg),
                 // Tilt of the screen's horizontal axis out of level.
@@ -3471,6 +3677,248 @@
             logEvent('mark', { ...cameraState(), nearest });
             document.getElementById('debug-marks').textContent = ++markCount;
             document.getElementById('debug-log').textContent = flightLog.length;
+        }
+
+        // ?target: tap to align. The user taps a plane they can see; the nearest pill
+        // is taken to be that plane, and the compass is turned by the difference in
+        // bearing so the pill lands on it. Only the bearing is corrected: tilt comes
+        // from gravity and is good, so a big height gap means the wrong plane.
+        const ALIGN_MAX_DEG = 30;       // more than this is almost surely the wrong plane
+        const ALIGN_MAX_ELEV_DEG = 75;  // near the zenith, bearing barely means anything
+        const ALIGN_PICK_RADIUS_PX = 260;
+        const ALIGN_STALE_TURN_DEG = 90; // the compass error changes with direction
+
+        const alignUi = {
+            state: 'off',         // off | arming | picked
+            icao: null,           // the pill taken to be the tapped plane
+            tap: null,            // { x, y } on screen
+            deltaDeg: 0,          // correction this pick would add
+            facingAtAlign: null,  // bearing when last aligned, for the stale dot
+            undoTo: 0,
+            toastTimer: null,
+            raf: null
+        };
+
+        function normDeg(d) { return ((d % 360) + 540) % 360 - 180; }
+
+        // Bearing and elevation of a point on screen, through the current camera.
+        function screenDirection(x, y) {
+            const { forward, right, up } = cameraBasis();
+            const { halfAcross, halfDown } = fieldOfView();
+            const tx = (x / window.innerWidth - 0.5) * 2 * Math.tan(halfAcross);
+            const ty = (0.5 - y / window.innerHeight) * 2 * Math.tan(halfDown);
+            const v = [0, 1, 2].map(i => forward[i] + tx * right[i] + ty * up[i]);
+            const len = Math.hypot(v[0], v[1], v[2]);
+            return {
+                bearing: (Math.atan2(v[0], v[1]) * 180 / Math.PI + 360) % 360,
+                elevation: Math.asin(v[2] / len) * 180 / Math.PI
+            };
+        }
+
+        // Pills currently on screen, with their centres.
+        function visiblePills() {
+            return Object.entries(markers)
+                .filter(([, m]) => m.style.display === 'block')
+                .map(([icao, m]) => {
+                    const r = m.getBoundingClientRect();
+                    return { icao, marker: m, rect: r, x: r.left + r.width / 2, y: r.top + r.height / 2 };
+                });
+        }
+
+        function planeBearingNow(icao) {
+            const plane = planes.find(p => p.icao24 === icao);
+            if (!plane || !userLocation) return null;
+            const pos = extrapolatePlane(plane, Date.now());
+            const distance = calculateDistance(userLocation.lat, userLocation.lon, pos.lat, pos.lon);
+            return {
+                plane,
+                bearing: calculateBearing(userLocation.lat, userLocation.lon, pos.lat, pos.lon),
+                elevation: calculateElevation(distance, pos.alt)
+            };
+        }
+
+        function setAlignChosen(icao) {
+            Object.values(markers).forEach(m => m.classList.remove('align-chosen'));
+            if (icao && markers[icao]) markers[icao].classList.add('align-chosen');
+        }
+
+        function drawAlignLink() {
+            const link = document.getElementById('align-link');
+            const pill = alignUi.icao && markers[alignUi.icao];
+            if (alignUi.state !== 'picked' || !pill || pill.style.display !== 'block') {
+                link.innerHTML = '';
+            } else {
+                const r = pill.getBoundingClientRect();
+                const x1 = r.left + r.width / 2, y1 = r.top + r.height / 2;
+                link.innerHTML = `<line x1="${x1}" y1="${y1}" x2="${alignUi.tap.x}" y2="${alignUi.tap.y}" stroke="#5CD6F5" stroke-width="2" stroke-dasharray="5 5" stroke-linecap="round"/>`;
+            }
+            alignUi.raf = alignUi.state === 'picked' ? requestAnimationFrame(drawAlignLink) : null;
+        }
+
+        function renderAlign() {
+            const s = alignUi.state;
+            const aligning = s !== 'off';
+            document.getElementById('align-layer').hidden = !aligning;
+            document.getElementById('align-banner').hidden = s !== 'arming';
+            document.getElementById('align-sheet').hidden = s !== 'picked';
+            document.getElementById('align-ring').hidden = s !== 'picked';
+            document.getElementById('align-reset').hidden = alignDeg === 0;
+            document.getElementById('align-btn').classList.toggle('active', aligning);
+            document.getElementById('align-btn').classList.toggle('aligned', alignDeg !== 0);
+            document.getElementById('status').classList.toggle('aligned', alignDeg !== 0);
+            setAlignChosen(s === 'picked' ? alignUi.icao : null);
+            if (s === 'picked') {
+                const ring = document.getElementById('align-ring');
+                ring.style.left = `${alignUi.tap.x}px`;
+                ring.style.top = `${alignUi.tap.y}px`;
+                if (!alignUi.raf) drawAlignLink();
+            } else {
+                document.getElementById('align-link').innerHTML = '';
+            }
+        }
+
+        function setBanner(title, sub) {
+            document.getElementById('align-banner-title').textContent = title;
+            document.getElementById('align-banner-sub').textContent = sub;
+        }
+
+        function startAlign() {
+            if (compassHeading === null) return;
+            hideAlignToast();
+            alignUi.state = 'arming';
+            alignUi.icao = null;
+            setBanner('Tap the plane you see', 'The plane itself in the sky, not its pill.');
+            renderAlign();
+        }
+
+        function stopAlign() {
+            alignUi.state = 'off';
+            alignUi.icao = null;
+            renderAlign();
+        }
+
+        // Work out the pick: which pill, and how far the compass must turn to put it
+        // on the tapped spot. Bearings are taken now, with the phone where the user
+        // aimed it, so moving the phone before confirming doesn't change the answer.
+        function pickAlign(icao, tap) {
+            const target = screenDirection(tap.x, tap.y);
+            const truth = planeBearingNow(icao);
+            if (!truth) return;
+            alignUi.state = 'picked';
+            alignUi.icao = icao;
+            alignUi.tap = tap;
+            alignUi.deltaDeg = normDeg(truth.bearing - target.bearing);
+
+            const name = truth.plane.label || truth.plane.callsign;
+            const pill = visiblePills().find(p => p.icao === icao);
+            const side = pill && tap.x < pill.x ? 'left' : 'right';
+            const turn = Math.round(Math.abs(alignUi.deltaDeg));
+            const heightGap = Math.abs(truth.elevation - target.elevation);
+            const confirm = document.getElementById('align-confirm');
+
+            document.getElementById('align-title').textContent = `Line up ${name} with this plane?`;
+            let body;
+            if (target.elevation > ALIGN_MAX_ELEV_DEG) {
+                body = 'That plane is nearly straight overhead, where direction can\'t be measured well. Pick a lower one.';
+                confirm.disabled = true;
+            } else if (Math.abs(alignUi.deltaDeg) > ALIGN_MAX_DEG) {
+                body = `That's ${turn}° away, too far to be the same plane. Pick again.`;
+                confirm.disabled = true;
+            } else {
+                body = turn === 0
+                    ? 'The pill is already on it. Nothing to change.'
+                    : `JetLens will move every pill ${turn}° ${side}.`;
+                if (heightGap > 4) body += ` It's also ${Math.round(heightGap)}° higher or lower, so check it's the right plane.`;
+                confirm.disabled = false;
+            }
+            document.getElementById('align-body').textContent = body;
+            renderAlign();
+        }
+
+        function onAlignLayerTap(ev) {
+            if (alignUi.state === 'off') return;
+            const tap = { x: ev.clientX, y: ev.clientY };
+            const pills = visiblePills();
+            // In the confirm step, tapping a pill switches which plane is meant.
+            if (alignUi.state === 'picked') {
+                const hit = pills.find(p => tap.x >= p.rect.left - 8 && tap.x <= p.rect.right + 8 &&
+                    tap.y >= p.rect.top - 8 && tap.y <= p.rect.bottom + 8);
+                if (hit) { pickAlign(hit.icao, alignUi.tap); return; }
+            }
+            let best = null, bestD = Infinity;
+            pills.forEach(p => {
+                const d = Math.hypot(tap.x - p.x, tap.y - p.y);
+                if (d < bestD) { bestD = d; best = p; }
+            });
+            if (!best || bestD > ALIGN_PICK_RADIUS_PX) {
+                alignUi.state = 'arming';
+                setBanner('No pill near there', 'Tap a plane that has a pill somewhere close to it.');
+                renderAlign();
+                return;
+            }
+            pickAlign(best.icao, tap);
+        }
+
+        function confirmAlign() {
+            if (alignUi.state !== 'picked') return;
+            const plane = planes.find(p => p.icao24 === alignUi.icao);
+            alignUi.undoTo = alignDeg;
+            alignDeg = normDeg(alignDeg + alignUi.deltaDeg);
+            alignUi.facingAtAlign = facingBearing();
+            logEvent('align', {
+                ...cameraState(),
+                icao: alignUi.icao,
+                cs: plane ? plane.callsign : null,
+                deltaDeg: round(alignUi.deltaDeg),
+                tapX: Math.round(alignUi.tap.x),
+                tapY: Math.round(alignUi.tap.y)
+            });
+            const turn = Math.round(Math.abs(alignUi.deltaDeg));
+            stopAlign();
+            showAlignToast(turn === 0 ? 'Already lined up' : `Pills moved ${turn}°`);
+        }
+
+        function showAlignToast(text) {
+            const toast = document.getElementById('align-toast');
+            document.getElementById('align-toast-text').textContent = text;
+            toast.hidden = false;
+            clearTimeout(alignUi.toastTimer);
+            alignUi.toastTimer = setTimeout(hideAlignToast, 6000);
+        }
+
+        function hideAlignToast() {
+            clearTimeout(alignUi.toastTimer);
+            document.getElementById('align-toast').hidden = true;
+        }
+
+        function resetAlign(to = 0) {
+            alignDeg = to;
+            if (alignDeg === 0) alignUi.facingAtAlign = null;
+            logEvent('align-reset', { ...cameraState() });
+            hideAlignToast();
+            stopAlign();
+        }
+
+        // Dim the dot after a big turn: the compass's error changes with direction,
+        // so a correction made facing south may not fit facing north.
+        function updateAlignStale() {
+            if (!targetMode || alignDeg === 0 || alignUi.facingAtAlign === null) return;
+            const facing = facingBearing();
+            if (facing === null) return;
+            document.getElementById('status').classList.toggle('align-stale',
+                Math.abs(normDeg(facing - alignUi.facingAtAlign)) > ALIGN_STALE_TURN_DEG);
+        }
+
+        function initAlign() {
+            const btn = document.getElementById('align-btn');
+            btn.hidden = false;
+            btn.addEventListener('click', () => alignUi.state === 'off' ? startAlign() : stopAlign());
+            document.getElementById('align-layer').addEventListener('click', onAlignLayerTap);
+            document.getElementById('align-cancel').addEventListener('click', stopAlign);
+            document.getElementById('align-reset').addEventListener('click', () => resetAlign(0));
+            document.getElementById('align-again').addEventListener('click', startAlign);
+            document.getElementById('align-confirm').addEventListener('click', confirmAlign);
+            document.getElementById('align-undo').addEventListener('click', () => resetAlign(alignUi.undoTo));
         }
 
         // Export the log. The share sheet is the way off an iPhone (AirDrop, Files,
