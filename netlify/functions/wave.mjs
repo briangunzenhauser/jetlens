@@ -1,4 +1,4 @@
-// Waves: someone on the ground sends one of four emojis to a plane, and people on
+// Waves: someone on the ground waves at a plane, and people on
 // board see it once their phone has shown it's on that plane, in the air. A
 // passenger's wave back reaches only the people who waved in the hour before it.
 // Behind ?wave for testing; see the "Waves" section in index.html.
@@ -28,7 +28,8 @@ const KEY_HASHES = new Set([
     '9e68eacdf4cdd0eb2ba4ef4664bfab5bf0830e89f7a6ed21bc25b52badda3973',
 ]);
 
-const EMOJIS = new Set(['👋', '👀', '👂', '❤️']);
+// Just a wave. (Eyes, ears and a heart were tried and cut on 2026-11-20.)
+const EMOJIS = new Set(['👋']);
 const RETENTION_MS = 12 * 60 * 60 * 1000;
 const REPLY_WINDOW_MS = 60 * 60 * 1000;
 const SEND_GAP_MS = 2 * 60 * 1000;
@@ -223,6 +224,30 @@ export default async (req, context) => {
                 .filter(w => w.t <= now && now - w.t <= REPLY_WINDOW_MS).map(w => w.device)).size;
             context.waitUntil(sweep(store, now));
             return json(200, { ok: true, t: now, reached });
+        }
+
+        case 'ride': {
+            // Test ride: where a given flight is right now, so the on-board screen
+            // can act as if this phone were on it. Key holders only, like the rest;
+            // anyone with the key could already fake their GPS, so it adds no
+            // new way in. Looked up by ICAO address or by callsign, anywhere.
+            const ride = String(body.ride || '').trim();
+            const path = /^[0-9a-f]{6}$/i.test(ride) ? `hex/${ride.toLowerCase()}`
+                : /^[0-9A-Za-z]{2,8}$/.test(ride) ? `callsign/${ride.toUpperCase()}` : null;
+            if (!path) return json(400, { error: 'ride needs a flight number or ICAO address' });
+            try {
+                const res = await fetch(`https://opendata.adsb.fi/api/v2/${path}`, {
+                    signal: AbortSignal.timeout(5000),
+                    headers: { 'User-Agent': 'JetLens (https://github.com/briangunzenhauser/jetlens)' }
+                });
+                if (!res.ok) return json(502, { error: `adsb.fi returned ${res.status}` });
+                const data = await res.json();
+                const ac = (data.ac ?? data.aircraft ?? [])
+                    .find(a => a.lat != null && a.alt_baro !== 'ground') || null;
+                return json(200, { ac });
+            } catch (error) {
+                return json(502, { error: 'flight lookup failed' });
+            }
         }
 
         default:

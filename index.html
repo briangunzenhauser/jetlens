@@ -426,67 +426,64 @@
         #info-panel.ui #altitude-row { grid-area: alt; }
         #info-panel.ui #speed-row { grid-area: speed; }
         #info-panel.ui #aircraft-row { grid-area: craft; }
-        /* ?wave: the message row at the bottom of the card. One line of heading,
-           then four buttons sized to tap without making the card much taller. */
+        /* ?wave: one row at the bottom of the card -- what it does on the left, a
+           single wave button on the right, so the card grows by one button's
+           height. Tapping dims the button and floats a 👋 up off it. */
         .wave-row[hidden] { display: none; }
+        .wave-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            align-items: center;
+            gap: 12px;
+        }
         #info-panel.ui .wave-row {
             grid-area: wave;
-            display: grid;
-            gap: 8px;
             padding-top: 12px;
             margin-top: 4px;
             border-top: 1px solid rgba(255, 255, 255, 0.16);
-            min-width: 0;
         }
-        .wave-head {
-            display: flex;
-            align-items: baseline;
-            gap: 8px;
-            min-width: 0;
-            white-space: nowrap;
-        }
-        .wave-head b { font-size: 14px; flex: none; }
-        .wave-head small {
-            font-size: 12px;
-            color: rgba(255, 255, 255, 0.75);
-            overflow: hidden;
-            text-overflow: ellipsis;
-            min-width: 0;
-        }
-        .wave-emojis {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 8px;
-        }
-        .wave-emojis button {
-            height: 40px;
-            border-radius: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.22);
-            background: rgba(255, 255, 255, 0.14);
-            font-size: 20px;
+        .wave-text { display: grid; gap: 2px; min-width: 0; }
+        .wave-text b { font-size: 14px; }
+        .wave-text small { font-size: 12px; line-height: 1.35; color: rgba(255, 255, 255, 0.8); }
+        .wave-text small.error { color: #FFC4C4; }
+        .wave-btn {
+            width: 56px;
+            height: 44px;
+            border-radius: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            background: rgba(255, 255, 255, 0.18);
+            font-size: 24px;
             line-height: 1;
-            font-family: inherit;
             padding: 0;
+            font-family: inherit;
             cursor: pointer;
-        }
-        /* Browsers give disabled buttons a translucent text colour, and colour
-           emoji take on that alpha; keep it solid and dim with opacity instead. */
-        .wave-emojis button,
-        .wave-emojis button:disabled {
+            /* Browsers give disabled buttons a translucent text colour, and colour
+               emoji take on that alpha; keep it solid and dim with opacity. */
             color: #fff;
             -webkit-text-fill-color: #fff;
+            transition: opacity 0.25s, transform 0.1s;
         }
-        .wave-emojis button:active { transform: scale(0.95); }
-        .wave-emojis button.sent {
-            text-shadow: none;
-            background: #fff;
-            border-color: #fff;
-            box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.25);
+        .wave-btn:active { transform: scale(0.94); }
+        .wave-btn:disabled { opacity: 0.35; cursor: default; }
+        .wave-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+        .wave-float {
+            position: fixed;
+            z-index: 400;
+            font-size: 30px;
+            line-height: 1;
+            pointer-events: none;
+            transform: translate(-50%, -50%);
+            animation: wave-float 1.4s ease-out forwards;
         }
-        .wave-emojis button:disabled { opacity: 0.4; cursor: default; }
-        .wave-emojis button.sent:disabled { opacity: 1; }
-        .wave-note { font-size: 12px; line-height: 1.4; color: rgba(255, 255, 255, 0.85); }
-        .wave-note[hidden] { display: none; }
+        @keyframes wave-float {
+            0%   { opacity: 0.75; transform: translate(-50%, -50%) scale(1) rotate(0deg); }
+            30%  { transform: translate(-50%, -110%) scale(1.25) rotate(-12deg); }
+            60%  { transform: translate(-50%, -170%) scale(1.35) rotate(10deg); }
+            100% { opacity: 0; transform: translate(-50%, -260%) scale(1.5) rotate(0deg); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .wave-float { display: none; }
+        }
         .plane-marker.waved .plane-marker-inner::after { content: '👋'; margin-left: 2px; }
         .plane-marker.parked:not(.selected) .plane-marker-inner::after { content: none; }
 
@@ -561,6 +558,18 @@
             text-shadow: none;
         }
         .ob-credit { margin: 0; font-size: 11px; opacity: 0.6; text-align: center; }
+        /* Test ride: says plainly that this phone isn't on the plane. */
+        #ob-ride {
+            border-radius: 12px;
+            padding: 8px 12px;
+            font-size: 12.5px;
+            font-weight: 600;
+            background: rgba(255, 196, 0, 0.18);
+            border: 1px solid rgba(255, 196, 0, 0.5);
+            color: #FFE08A;
+            text-shadow: none;
+        }
+        #ob-ride[hidden] { display: none; }
         .ob-credit a { color: inherit; }
         .ob-glass {
             background-color: rgba(10, 12, 20, 0.30);
@@ -653,7 +662,6 @@
         }
         .ob-sum { border-radius: 18px; padding: 16px; display: grid; gap: 6px; }
         .ob-sum .n { font-family: 'Sora', -apple-system, BlinkMacSystemFont, sans-serif; font-size: 34px; font-weight: 700; line-height: 1; }
-        .ob-tally { display: flex; gap: 14px; font-size: 14px; font-variant-numeric: tabular-nums; }
 
         #info-panel.ui .route-credit {
             grid-area: credit;
@@ -1738,6 +1746,7 @@
     <!-- ?wave: the screen for someone on a plane, instead of the camera view. -->
     <div id="onboard" hidden>
         <div class="ob-brand">JetLens <span>Waves · test</span></div>
+        <div id="ob-ride" hidden></div>
         <div id="ob-body"></div>
         <p class="ob-credit">Place names from <a href="https://www.geonames.org/" target="_blank" rel="noopener">GeoNames</a> (CC BY 4.0)</p>
     </div>
@@ -1902,16 +1911,13 @@
         <div class="route-credit" id="route-credit" hidden>
             Route data: <a href="https://aerodatabox.com/" target="_blank" rel="noopener">AeroDataBox</a>
         </div>
-        <!-- ?wave: send an emoji to the people on board. -->
+        <!-- ?wave: wave at the people on board. -->
         <div class="wave-row" id="wave-row" hidden>
-            <div class="wave-head"><b id="wave-title">Send a message</b><small id="wave-sub">only people on board see it</small></div>
-            <div class="wave-emojis" id="wave-emojis">
-                <button type="button" data-emoji="👋" aria-label="Send a wave">👋</button>
-                <button type="button" data-emoji="👀" aria-label="Send eyes">👀</button>
-                <button type="button" data-emoji="👂" aria-label="Send ears">👂</button>
-                <button type="button" data-emoji="❤️" aria-label="Send a heart">❤️</button>
+            <div class="wave-text">
+                <b id="wave-title">Wave at the passengers.</b>
+                <small id="wave-sub">Only people on board see it.</small>
             </div>
-            <div class="wave-note" id="wave-note" hidden></div>
+            <button type="button" class="wave-btn" id="wave-btn" aria-label="Wave at the passengers">👋</button>
         </div>
     </div>
 
@@ -2991,6 +2997,10 @@
             initFilterTab();
             if (targetMode) initAlign();
             if (waveKey) document.getElementById('onboard-btn').hidden = false;
+            if (waveKey && new URLSearchParams(location.search).get('ride')) {
+                startOnboard();
+                return;
+            }
 
             if (previewMode === 'intro') {
                 loading.classList.add('hidden');
@@ -3659,16 +3669,15 @@
             return R * c;
         }
 
-        // Calculate elevation angle to plane
         // --- Waves (?wave) ---
         //
-        // Test only, behind a private link (?wave=<key>): someone on the ground sends
-        // 👋 👀 👂 or ❤️ from a plane's card, and people on board see it once their
+        // Test only, behind a private link (?wave=<key>): someone on the ground waves
+        // 👋 from a plane's card, and people on board see it once their
         // phone shows it's on that plane, in the air. A wave back reaches only the
         // people who waved in the hour before it. The server side, its limits and its
         // known holes are in netlify/functions/wave.mjs.
         //
-        // On the ground: the card's "Send a message" row, a 👋 on pills you waved
+        // On the ground: the card's "Wave at the passengers" row, a 👋 on pills you waved
         // at, and a toast when someone on board waves back (polled every 20 s for
         // an hour after each wave).
         // In the air: "I'm on a plane" on the start screen opens #onboard instead of
@@ -3750,7 +3759,27 @@
         const waveable = plane => Boolean(waveKey) && !plane.on_ground && !plane.limited &&
             plane.group !== 'military';
 
+        // A semi-transparent 👋 that rises off a button and fades: the sign a wave
+        // went. Played on tap; if sending then fails, the text says so.
+        function floatWave(button) {
+            const r = button.getBoundingClientRect();
+            const el = document.createElement('span');
+            el.className = 'wave-float';
+            el.textContent = '👋';
+            el.setAttribute('aria-hidden', 'true');
+            el.style.left = `${r.left + r.width / 2}px`;
+            el.style.top = `${r.top + r.height / 2}px`;
+            document.body.appendChild(el);
+            setTimeout(() => el.remove(), 1600);
+        }
+
+        const minutesAgo = t => {
+            const m = Math.round((Date.now() - t) / 60000);
+            return m < 1 ? 'just now' : `${m} min ago`;
+        };
+
         let waveTimer = null;
+        let waveError = null;
         function renderWaveRow(plane) {
             const row = document.getElementById('wave-row');
             clearInterval(waveTimer);
@@ -3758,72 +3787,80 @@
             if (!uiMode || !plane || !waveable(plane)) { row.hidden = true; return; }
             row.hidden = false;
             const flight = waveFlightId(plane.icao24, plane.callsign);
+            if (row.dataset.flight !== flight) waveError = null;
+            row.dataset.flight = flight;
+            row.dataset.icao = plane.icao24;
             const draw = () => {
                 const last = lastWaveAt(flight);
-                const left = last ? WAVE_SEND_GAP_MS - (Date.now() - last.t) : 0;
-                const waiting = left > 0;
-                document.getElementById('wave-title').textContent =
-                    last ? `You waved ${last.emoji}` : 'Send a message';
-                const mm = Math.floor(left / 60000), ss = Math.floor(left / 1000) % 60;
-                document.getElementById('wave-sub').textContent = waiting
-                    ? `again in ${mm}:${String(ss).padStart(2, '0')}`
-                    : last ? 'send another' : 'only people on board see it';
-                document.querySelectorAll('#wave-emojis button').forEach(b => {
-                    b.classList.toggle('sent', Boolean(waiting && last && b.dataset.emoji === last.emoji));
-                    b.disabled = waiting;
-                });
-                const note = document.getElementById('wave-note');
-                if (last) {
-                    note.hidden = false;
-                    note.textContent = 'A wave back in the next hour shows up here.' +
-                        (last.nearby > 0 ? ` ${last.nearby} ${last.nearby === 1 ? 'other' : 'others'} near you waved too.` : '');
+                const waiting = last && Date.now() - last.t < WAVE_SEND_GAP_MS;
+                const title = document.getElementById('wave-title');
+                const sub = document.getElementById('wave-sub');
+                const btn = document.getElementById('wave-btn');
+                const others = last?.nearby > 0
+                    ? ` ${last.nearby} ${last.nearby === 1 ? 'other' : 'others'} near you waved too.` : '';
+                sub.classList.toggle('error', Boolean(waveError));
+                if (waveError) {
+                    title.textContent = 'Wave at the passengers.';
+                    sub.textContent = waveError;
+                } else if (waiting) {
+                    title.textContent = 'Wave sent.';
+                    sub.textContent = 'A wave back in the next hour shows up here.' + others;
+                } else if (last) {
+                    title.textContent = 'Wave at the passengers.';
+                    sub.textContent = `You waved ${minutesAgo(last.t)}. A wave back shows up here.`;
                 } else {
-                    note.hidden = true;
+                    title.textContent = 'Wave at the passengers.';
+                    sub.textContent = 'Only people on board see it.';
                 }
-                if (!waiting && waveTimer) { clearInterval(waveTimer); waveTimer = null; }
+                btn.disabled = Boolean(waiting) || btn.dataset.sending === '1';
+                btn.setAttribute('aria-label', waiting ? 'Wave sent' : 'Wave at the passengers');
             };
             draw();
             if (lastWaveAt(flight)) waveTimer = setInterval(draw, 1000);
-            row.dataset.flight = flight;
-            row.dataset.icao = plane.icao24;
         }
 
-        async function sendWave(emoji) {
+        async function sendWave() {
             const row = document.getElementById('wave-row');
+            const btn = document.getElementById('wave-btn');
             const plane = planes.find(p => p.icao24 === row.dataset.icao) || selectedPlane;
-            if (!plane || !userLocation) return;
-            document.querySelectorAll('#wave-emojis button').forEach(b => { b.disabled = true; });
+            if (!plane || !userLocation || btn.disabled) return;
+            waveError = null;
+            btn.dataset.sending = '1';
+            btn.disabled = true;
+            floatWave(btn);
             try {
                 // Rounded to the feed's ~5 km grid before it leaves the phone.
                 const res = await waveCall('send', {
-                    hex: plane.icao24, callsign: plane.callsign, emoji,
+                    hex: plane.icao24, callsign: plane.callsign, emoji: '👋',
                     lat: Number(snapToGrid(userLocation.lat)), lon: Number(snapToGrid(userLocation.lon))
                 });
                 const list = sentWaves();
                 list.push({ flight: res.flight, hex: plane.icao24, callsign: plane.callsign,
-                    t: res.t, emoji, nearby: res.nearby });
+                    t: res.t, nearby: res.nearby });
                 saveSentWaves(list);
-                track('wave-sent', { emoji });
+                track('wave-sent');
                 startReplyPolling();
             } catch (error) {
                 if (error.status === 429) {
-                    // Sent from another tab or a lost answer: fall in with the server's clock.
+                    // Already waved (another tab, or an answer that got lost): fall in
+                    // with the server's clock.
                     const list = sentWaves();
                     list.push({ flight: waveFlightId(plane.icao24, plane.callsign), hex: plane.icao24,
-                        callsign: plane.callsign, emoji,
+                        callsign: plane.callsign,
                         t: Date.now() - WAVE_SEND_GAP_MS + (error.body?.retryAfterS ?? 60) * 1000, nearby: 0 });
                     saveSentWaves(list);
                 } else {
-                    document.getElementById('wave-sub').textContent = error.status === 403
-                        ? 'this wave link no longer works' : "couldn't send, try again";
+                    waveError = error.status === 403
+                        ? "This wave link doesn't work anymore."
+                        : "Your wave didn't send. Tap to try again.";
                     console.log('wave send failed:', error);
                 }
             }
+            delete btn.dataset.sending;
             if (selectedPlane?.icao24 === plane.icao24) renderWaveRow(plane);
         }
 
-        document.querySelectorAll('#wave-emojis button').forEach(b =>
-            b.addEventListener('click', () => sendWave(b.dataset.emoji)));
+        document.getElementById('wave-btn').addEventListener('click', sendWave);
 
         // Replies to this phone's waves.
         let replyTimer = null;
@@ -3857,7 +3894,7 @@
             const toast = document.getElementById('wave-toast');
             const cs = wave?.callsign && wave.callsign !== 'N/A' ? wave.callsign.trim() : 'the plane';
             const mins = wave ? Math.max(1, Math.round((reply.t - wave.t) / 60000)) : null;
-            document.getElementById('wave-toast-emoji').textContent = reply.emoji;
+            document.getElementById('wave-toast-emoji').textContent = '👋';
             document.getElementById('wave-toast-title').textContent = `Someone on ${cs} waved back`;
             document.getElementById('wave-toast-sub').textContent =
                 mins ? `The plane you waved at ${mins} min ago` : 'A plane you waved at';
@@ -3901,6 +3938,38 @@
             document.getElementById('loading').classList.add('hidden');
             document.getElementById('onboard').hidden = false;
             renderOnboard();
+            // Test ride (?ride=UAL1718 or an ICAO address, with the wave key): act as
+            // if this phone were on that flight, wherever it is, using the feed's
+            // position instead of GPS. For testing the on-board side from the ground.
+            const ride = new URLSearchParams(location.search).get('ride');
+            if (ride) {
+                ob.ride = ride.trim();
+                const banner = document.getElementById('ob-ride');
+                banner.textContent = `Test ride on ${ob.ride.toUpperCase()} · this phone isn't really on board`;
+                banner.hidden = false;
+                const tick = async () => {
+                    try {
+                        const { ac } = await waveCall('ride', { ride: ob.ride });
+                        if (!ac) {
+                            ob.state = 'ridemissing';
+                            ob.flight = null;
+                            stopOnboardTimers();
+                            renderOnboard();
+                            return;
+                        }
+                        const altFt = typeof ac.alt_geom === 'number' ? ac.alt_geom : ac.alt_baro;
+                        onboardFix({ lat: ac.lat, lon: ac.lon, altM: altFt / FT_PER_M,
+                            speedMs: ac.gs / KT_PER_MS, heading: ac.track ?? null, accuracy: 5, t: Date.now() });
+                    } catch (error) {
+                        console.log('test ride lookup failed:', error);
+                        ob.state = error.status === 403 ? 'badlink' : 'offline';
+                        renderOnboard();
+                    }
+                };
+                tick();
+                setInterval(tick, 15000);
+                return;
+            }
             // localhost only, never the live site: ?fakefix=lat,lon,altM,speedMs for a
             // fixed spot, or ?fakefix=follow:<hex>,lat,lon to ride along with a real
             // plane in the feed (starting the search near lat,lon).
@@ -4105,20 +4174,23 @@
             }
         }
 
-        async function sendReply(emoji) {
+        async function sendReply(button) {
             if (!ob.flight || ob.replying) return;
             ob.replying = true;
-            renderOnboard();
+            floatWave(button);
+            button.disabled = true;
             try {
-                const res = await waveCall('reply', { flight: ob.flight, emoji });
+                const res = await waveCall('reply', { flight: ob.flight, emoji: '👋' });
                 ob.replyNote = res.reached > 0
-                    ? `Sent ${emoji} to ${res.reached} ${res.reached === 1 ? 'person' : 'people'}`
-                    : 'Sent. Nobody has waved in the last hour yet.';
-                track('wave-reply-sent', { emoji });
+                    ? `Waved back to ${res.reached} ${res.reached === 1 ? 'person' : 'people'}.`
+                    : 'Waved back. Nobody has waved in the last hour yet.';
+                ob.repliedAt = Date.now();
+                ob.replyError = null;
+                track('wave-reply-sent');
                 loadFeed();
             } catch (error) {
-                ob.replyNote = error.status === 429 ? `Wait ${error.body?.retryAfterS ?? 60} s to wave again`
-                    : error.status === 403 ? 'Checking your plane again first…' : "Couldn't send, try again";
+                ob.replyError = error.status === 429 ? `You can wave again in ${error.body?.retryAfterS ?? 60} s.`
+                    : error.status === 403 ? 'Checking your plane again first…' : "Your wave didn't send. Tap to try again.";
                 if (error.status === 403) matchPlane();
             }
             ob.replying = false;
@@ -4129,10 +4201,9 @@
         function groupWaves(waves) {
             const byPlace = new Map();
             for (const w of waves) {
-                const g = byPlace.get(w.place) || { place: w.place, count: 0, latest: 0, emojis: {} };
+                const g = byPlace.get(w.place) || { place: w.place, count: 0, latest: 0 };
                 g.count++;
                 g.latest = Math.max(g.latest, w.t);
-                g.emojis[w.emoji] = (g.emojis[w.emoji] || 0) + 1;
                 byPlace.set(w.place, g);
             }
             return [...byPlace.values()].sort((a, b) => b.latest - a.latest);
@@ -4147,11 +4218,8 @@
         const clock = t => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
         function placeItem(g, timeText) {
-            const ranked = Object.entries(g.emojis).sort((a, b) => b[1] - a[1]);
-            const icons = ranked.slice(0, 2).map(([e]) => e).join('');
-            const breakdown = ranked.map(([e, n]) => `${n} ${e}`).join(' · ');
             const who = g.count === 1 ? `1 person in ${g.place}` : `${g.count} people in ${g.place}`;
-            return `<div class="ob-item ob-glass"><div class="e">${icons}</div><div><b>${escapeHtml(who)}</b><span>${breakdown}</span></div><time>${timeText}</time></div>`;
+            return `<div class="ob-item ob-glass"><div class="e">👋</div><div><b>${escapeHtml(who)}</b></div><time>${timeText}</time></div>`;
         }
 
         function renderOnboard() {
@@ -4188,8 +4256,16 @@
                     "Your phone is on the ground, so there's nothing to show yet. Open JetLens again once you're flying and on Wi-Fi.") +
                     '<button class="ob-btn" type="button" id="ob-camera">Open the camera view</button>';
                 document.getElementById('ob-camera').addEventListener('click', () => {
-                    location.href = location.pathname + location.search.replace(/([?&])fakefix=[^&]*&?/, '$1');
+                    const params = new URLSearchParams(location.search);
+                    params.delete('fakefix');
+                    params.delete('ride');
+                    location.href = `${location.pathname}?${params}`;
                 });
+                return;
+            }
+            if (ob.state === 'ridemissing') {
+                body.innerHTML = center(`${escapeHtml(ob.ride.toUpperCase())} isn't flying right now`,
+                    "The live feed doesn't show it in the air. Check the flight number on a plane's card, or try one overhead. Checking again every 15 seconds.");
                 return;
             }
             if (ob.state === 'nomatch') {
@@ -4235,13 +4311,11 @@
             if (ob.showSummary) {
                 const sw = ob.showSummary.waves;
                 const groups = groupWaves(sw);
-                const tally = {};
-                sw.forEach(w => { tally[w.emoji] = (tally[w.emoji] || 0) + 1; });
                 const first = Math.min(...sw.map(w => w.t)), last = Math.max(...sw.map(w => w.t));
                 body.innerHTML = head + `<div class="ob-sum ob-glass"><div class="ob-k">While you were offline</div>
                     <div class="n">${sw.length} ${sw.length === 1 ? 'wave' : 'waves'}</div>
                     <div class="ob-s">from ${groups.length} ${groups.length === 1 ? 'place' : 'places'}, between ${clock(first)} and ${clock(last)}</div>
-                    <div class="ob-tally">${Object.entries(tally).sort((a, b) => b[1] - a[1]).map(([e, n]) => `<span>${e} ${n}</span>`).join('')}</div></div>
+                    </div>
                     <div class="ob-feed">${groups.slice(0, 3).map(g => placeItem(g, clock(g.latest))).join('')}</div>
                     <div class="ob-reply"><button class="ob-btn" type="button" id="ob-all">${groups.length > 3 ? `Show all ${groups.length} places` : 'Show all waves'}</button></div>`;
                 document.getElementById('ob-all').addEventListener('click', () => { ob.showSummary = false; renderOnboard(); });
@@ -4251,20 +4325,23 @@
             const groups = groupWaves(waves);
             const wavers = ob.feed?.wavers ?? 0;
             const mine = ob.feed?.mine || [];
-            const lastMine = mine.length ? mine.reduce((a, b) => (a.t > b.t ? a : b)) : null;
+            const lastMine = Math.max(ob.repliedAt || 0, ...mine.map(m => m.t));
+            const replyWait = lastMine && Date.now() - lastMine < 60000;
             body.innerHTML = head + `<div class="ob-feed">
                 <div class="ob-feed-h ob-k"><span>Waves from below</span><span>${waves.length} so far</span></div>
                 ${groups.length ? groups.map(g => placeItem(g, ago(g.latest))).join('')
                     : `<div class="ob-empty">${ob.feed ? 'No waves yet. When someone below taps your plane in JetLens, it shows up here.' : 'Loading waves…'}</div>`}
                 </div>
-                <div class="ob-reply">
-                    <div class="wave-head"><b>Wave back</b><small>${wavers > 0 ? `to the ${wavers} who waved in the last hour` : 'to anyone who waves in the hour before'}</small></div>
-                    <div class="wave-emojis" id="ob-emojis">${['👋', '👀', '👂', '❤️'].map(e =>
-                        `<button type="button" data-emoji="${e}" class="${lastMine && Date.now() - lastMine.t < 60000 && lastMine.emoji === e ? 'sent' : ''}"${ob.replying ? ' disabled' : ''}>${e}</button>`).join('')}</div>
-                    ${ob.replyNote ? `<div class="wave-note">${escapeHtml(ob.replyNote)}</div>` : ''}
+                <div class="ob-reply wave-row">
+                    <div class="wave-text">
+                        <b>${replyWait ? 'Wave sent.' : 'Wave back.'}</b>
+                        <small class="${ob.replyError ? 'error' : ''}">${escapeHtml(ob.replyError
+                            || (replyWait && ob.replyNote)
+                            || (wavers > 0 ? `To the ${wavers} who waved in the last hour.` : 'To anyone who waved in the last hour.'))}</small>
+                    </div>
+                    <button type="button" class="wave-btn" id="ob-wave" aria-label="Wave back"${ob.replying || replyWait ? ' disabled' : ''}>👋</button>
                 </div>`;
-            body.querySelectorAll('#ob-emojis button').forEach(b =>
-                b.addEventListener('click', () => sendReply(b.dataset.emoji)));
+            document.getElementById('ob-wave').addEventListener('click', e => sendReply(e.currentTarget));
         }
 
         document.getElementById('onboard-btn').addEventListener('click', startOnboard);
