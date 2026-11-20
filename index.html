@@ -349,7 +349,8 @@
                 "origin  origin  origin  dest    dest    dest"
                 "trip    trip    trip    trip    trip    trip"
                 "alt     alt     speed   speed   craft   craft"
-                "credit  credit  credit  credit  credit  credit";
+                "credit  credit  credit  credit  credit  credit"
+                "wave    wave    wave    wave    wave    wave";
             column-gap: 12px;
             align-content: start;
             color: #fff;
@@ -425,6 +426,235 @@
         #info-panel.ui #altitude-row { grid-area: alt; }
         #info-panel.ui #speed-row { grid-area: speed; }
         #info-panel.ui #aircraft-row { grid-area: craft; }
+        /* ?wave: the message row at the bottom of the card. One line of heading,
+           then four buttons sized to tap without making the card much taller. */
+        .wave-row[hidden] { display: none; }
+        #info-panel.ui .wave-row {
+            grid-area: wave;
+            display: grid;
+            gap: 8px;
+            padding-top: 12px;
+            margin-top: 4px;
+            border-top: 1px solid rgba(255, 255, 255, 0.16);
+            min-width: 0;
+        }
+        .wave-head {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+            min-width: 0;
+            white-space: nowrap;
+        }
+        .wave-head b { font-size: 14px; flex: none; }
+        .wave-head small {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.75);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            min-width: 0;
+        }
+        .wave-emojis {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+        }
+        .wave-emojis button {
+            height: 40px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.22);
+            background: rgba(255, 255, 255, 0.14);
+            font-size: 20px;
+            line-height: 1;
+            font-family: inherit;
+            padding: 0;
+            cursor: pointer;
+        }
+        /* Browsers give disabled buttons a translucent text colour, and colour
+           emoji take on that alpha; keep it solid and dim with opacity instead. */
+        .wave-emojis button,
+        .wave-emojis button:disabled {
+            color: #fff;
+            -webkit-text-fill-color: #fff;
+        }
+        .wave-emojis button:active { transform: scale(0.95); }
+        .wave-emojis button.sent {
+            text-shadow: none;
+            background: #fff;
+            border-color: #fff;
+            box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.25);
+        }
+        .wave-emojis button:disabled { opacity: 0.4; cursor: default; }
+        .wave-emojis button.sent:disabled { opacity: 1; }
+        .wave-note { font-size: 12px; line-height: 1.4; color: rgba(255, 255, 255, 0.85); }
+        .wave-note[hidden] { display: none; }
+        .plane-marker.waved .plane-marker-inner::after { content: '👋'; margin-left: 2px; }
+        .plane-marker.parked:not(.selected) .plane-marker-inner::after { content: none; }
+
+        #wave-toast {
+            position: fixed;
+            left: 12px;
+            right: 12px;
+            top: 74px;
+            z-index: 206;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 14px;
+            border-radius: 18px;
+            text-align: left;
+            font-family: inherit;
+            cursor: pointer;
+        }
+        #wave-toast[hidden] { display: none; }
+        .wave-toast-emoji { font-size: 28px; line-height: 1; }
+        .wave-toast-text { display: grid; gap: 2px; min-width: 0; }
+        .wave-toast-text strong { font-size: 14px; }
+        .wave-toast-text span { font-size: 12px; opacity: 0.85; }
+
+        #onboard-btn {
+            margin-top: 12px;
+            padding: 12px 28px;
+            border-radius: 999px;
+            border: 1px solid rgba(11, 44, 77, 0.35);
+            background: transparent;
+            color: var(--midnight);
+            font-family: 'Sora', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        #onboard-btn[hidden] { display: none; }
+
+        /* The on-board screen: the start screen's dark sky, glass cards on it. */
+        #onboard {
+            position: fixed;
+            inset: 0;
+            z-index: 300;
+            overflow-y: auto;
+            padding: calc(22px + env(safe-area-inset-top)) 16px calc(18px + env(safe-area-inset-bottom));
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            color: #fff;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+            background: radial-gradient(120% 80% at 50% 0%, #17305a 0%, #0b1424 60%, #070b14 100%);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        #onboard[hidden] { display: none; }
+        #ob-body { flex: 1; display: flex; flex-direction: column; gap: 12px; }
+        .ob-brand {
+            font-family: 'Sora', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-weight: 700;
+            font-size: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .ob-brand span {
+            font-family: inherit;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 3px 8px;
+            border-radius: 999px;
+            background: rgba(92, 214, 245, 0.18);
+            color: #5CD6F5;
+            text-shadow: none;
+        }
+        .ob-credit { margin: 0; font-size: 11px; opacity: 0.6; text-align: center; }
+        .ob-credit a { color: inherit; }
+        .ob-glass {
+            background-color: rgba(10, 12, 20, 0.30);
+            background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.10), rgba(0, 0, 0, 0.25));
+            border: 1px solid rgba(255, 255, 255, 0.22);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+        }
+        .ob-center {
+            margin: auto 0;
+            display: grid;
+            gap: 14px;
+            text-align: center;
+            justify-items: center;
+        }
+        .ob-center h3 {
+            font-family: 'Sora', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-size: 20px;
+            margin: 0;
+            text-wrap: balance;
+        }
+        .ob-center p { margin: 0; font-size: 14px; line-height: 1.5; opacity: 0.85; max-width: 32ch; }
+        .ob-window {
+            width: 92px;
+            height: 130px;
+            border-radius: 46px;
+            border: 5px solid rgba(255, 255, 255, 0.75);
+            background: linear-gradient(180deg, #7fb3e6, #cfe3f1 60%, #8aa080 61%);
+        }
+        .ob-gps {
+            font-size: 12px;
+            padding: 5px 10px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.12);
+            font-variant-numeric: tabular-nums;
+        }
+        .ob-card { border-radius: 18px; padding: 14px; display: grid; gap: 4px; }
+        .ob-k {
+            font-size: 11px;
+            letter-spacing: 0.07em;
+            text-transform: uppercase;
+            opacity: 0.7;
+            font-weight: 600;
+        }
+        .ob-v { font-family: 'Sora', -apple-system, BlinkMacSystemFont, sans-serif; font-size: 22px; font-weight: 700; }
+        .ob-s { font-size: 12.5px; opacity: 0.85; }
+        .ob-feed { display: grid; gap: 8px; }
+        .ob-feed-h { display: flex; justify-content: space-between; }
+        .ob-item {
+            border-radius: 14px;
+            padding: 10px 12px;
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            gap: 10px;
+            align-items: center;
+        }
+        .ob-item .e { font-size: 20px; letter-spacing: -2px; }
+        .ob-item b { display: block; font-size: 13.5px; }
+        .ob-item span { font-size: 11.5px; opacity: 0.75; }
+        .ob-item time { font-size: 11px; opacity: 0.7; font-variant-numeric: tabular-nums; }
+        .ob-empty { font-size: 13px; opacity: 0.75; padding: 6px 2px; }
+        .ob-reply { margin-top: auto; display: grid; gap: 8px; }
+        .ob-choice {
+            border-radius: 14px;
+            padding: 12px;
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 2px 10px;
+            align-items: center;
+            text-align: left;
+            width: 100%;
+            color: #fff;
+            font-family: inherit;
+            cursor: pointer;
+        }
+        .ob-choice b { font-size: 15px; }
+        .ob-choice span { font-size: 12px; opacity: 0.8; grid-column: 1; }
+        .ob-choice i { grid-row: 1 / span 2; grid-column: 2; font-style: normal; font-size: 18px; opacity: 0.7; }
+        .ob-btn {
+            height: 44px;
+            border-radius: 999px;
+            border: 1px solid #fff;
+            background: #fff;
+            color: #0B2C4D;
+            text-shadow: none;
+            font: 600 14px -apple-system, BlinkMacSystemFont, sans-serif;
+            width: 100%;
+            max-width: 260px;
+            justify-self: center;
+            cursor: pointer;
+        }
+        .ob-sum { border-radius: 18px; padding: 16px; display: grid; gap: 6px; }
+        .ob-sum .n { font-family: 'Sora', -apple-system, BlinkMacSystemFont, sans-serif; font-size: 34px; font-weight: 700; line-height: 1; }
+        .ob-tally { display: flex; gap: 14px; font-size: 14px; font-variant-numeric: tabular-nums; }
+
         #info-panel.ui .route-credit {
             grid-area: credit;
             margin-top: 10px;
@@ -1486,6 +1716,7 @@
             <div class="spinner"></div>
             <div id="loading-text">Initializing camera and sensors...</div>
             <button id="start-btn" style="display: none;">Start JetLens</button>
+            <button id="onboard-btn" type="button" hidden>I'm on a plane</button>
             <p id="permission-note" style="display: none;">
                 JetLens needs access to your camera and location to work properly.
             </p>
@@ -1496,6 +1727,19 @@
             <!-- No rel="noreferrer" on the AeroDataBox link: its terms forbid suppressing the referrer. -->
             Routes from <a href="https://aerodatabox.com/" target="_blank" rel="noopener">AeroDataBox</a> and adsb.lol, aircraft info from <a href="https://hexdb.io" target="_blank" rel="noopener">hexdb.io</a>
         </p>
+    </div>
+
+    <!-- ?wave: someone on board you waved at waved back. -->
+    <button id="wave-toast" class="align-glass" type="button" hidden>
+        <span class="wave-toast-emoji" id="wave-toast-emoji">👋</span>
+        <span class="wave-toast-text"><strong id="wave-toast-title"></strong><span id="wave-toast-sub"></span></span>
+    </button>
+
+    <!-- ?wave: the screen for someone on a plane, instead of the camera view. -->
+    <div id="onboard" hidden>
+        <div class="ob-brand">JetLens <span>Waves · test</span></div>
+        <div id="ob-body"></div>
+        <p class="ob-credit">Place names from <a href="https://www.geonames.org/" target="_blank" rel="noopener">GeoNames</a> (CC BY 4.0)</p>
     </div>
 
     <div id="intro" aria-hidden="true">
@@ -1657,6 +1901,17 @@
         <!-- No rel="noreferrer": AeroDataBox's terms forbid suppressing the referrer. -->
         <div class="route-credit" id="route-credit" hidden>
             Route data: <a href="https://aerodatabox.com/" target="_blank" rel="noopener">AeroDataBox</a>
+        </div>
+        <!-- ?wave: send an emoji to the people on board. -->
+        <div class="wave-row" id="wave-row" hidden>
+            <div class="wave-head"><b id="wave-title">Send a message</b><small id="wave-sub">only people on board see it</small></div>
+            <div class="wave-emojis" id="wave-emojis">
+                <button type="button" data-emoji="👋" aria-label="Send a wave">👋</button>
+                <button type="button" data-emoji="👀" aria-label="Send eyes">👀</button>
+                <button type="button" data-emoji="👂" aria-label="Send ears">👂</button>
+                <button type="button" data-emoji="❤️" aria-label="Send a heart">❤️</button>
+            </div>
+            <div class="wave-note" id="wave-note" hidden></div>
         </div>
     </div>
 
@@ -2735,6 +2990,7 @@
             }
             initFilterTab();
             if (targetMode) initAlign();
+            if (waveKey) document.getElementById('onboard-btn').hidden = false;
 
             if (previewMode === 'intro') {
                 loading.classList.add('hidden');
@@ -2889,6 +3145,7 @@
                 // backs off if the feed starts failing; positions are dead-reckoned
                 // between polls.
                 pollLoop();
+                startReplyPolling();
                 setInterval(() => { // Update marker positions frequently
                     updateMarkers();
                 }, 100);
@@ -3403,6 +3660,615 @@
         }
 
         // Calculate elevation angle to plane
+        // --- Waves (?wave) ---
+        //
+        // Test only, behind a private link (?wave=<key>): someone on the ground sends
+        // 👋 👀 👂 or ❤️ from a plane's card, and people on board see it once their
+        // phone shows it's on that plane, in the air. A wave back reaches only the
+        // people who waved in the hour before it. The server side, its limits and its
+        // known holes are in netlify/functions/wave.mjs.
+        //
+        // On the ground: the card's "Send a message" row, a 👋 on pills you waved
+        // at, and a toast when someone on board waves back (polled every 20 s for
+        // an hour after each wave).
+        // In the air: "I'm on a plane" on the start screen opens #onboard instead of
+        // the camera. GPS must show the phone flying (WAVE_AIRBORNE_*) and match
+        // one plane in the feed (WAVE_MATCH_*); it's matched again every minute.
+        const waveKey = new URLSearchParams(location.search).get('wave');
+        const WAVE_API = '/api/wave';
+        const WAVE_REPLY_WINDOW_MS = 60 * 60 * 1000;
+        const WAVE_SEND_GAP_MS = 2 * 60 * 1000;
+        const WAVE_REPLY_POLL_MS = 20000;
+        const WAVE_FEED_POLL_MS = 20000;
+        const WAVE_REMATCH_MS = 60000;
+        const WAVE_AIRBORNE_MIN_ALT_M = 3000;
+        const WAVE_AIRBORNE_MIN_SPEED_MS = 100;
+        // A GPS fix vaguer than this isn't GPS: indoors and on planes the browser
+        // falls back to Wi-Fi positions, which are useless at 35,000 ft.
+        const WAVE_FIX_MAX_ACCURACY_M = 150;
+        const WAVE_MATCH_KM = 5;
+        const WAVE_MATCH_ALT_M = 500;
+        const WAVE_MATCH_TRACK_DEG = 30;
+        // "While you were offline" after a gap this long without the feed.
+        const WAVE_OFFLINE_GAP_MS = 10 * 60 * 1000;
+        const WAVE_SENT_KEY = 'jetlens-waves-sent';
+
+        // A random id for this phone, for the server's limits and for knowing whose
+        // waves a reply reaches. Not tied to anyone.
+        const waveDevice = (() => {
+            const KEY = 'jetlens-device';
+            try {
+                let id = localStorage.getItem(KEY);
+                if (!id) {
+                    id = [...crypto.getRandomValues(new Uint8Array(12))]
+                        .map(b => b.toString(16).padStart(2, '0')).join('');
+                    localStorage.setItem(KEY, id);
+                }
+                return id;
+            } catch {
+                return [...crypto.getRandomValues(new Uint8Array(12))]
+                    .map(b => b.toString(16).padStart(2, '0')).join('');
+            }
+        })();
+
+        // Same as flightId in wave.mjs: the aircraft plus its callsign.
+        function waveFlightId(hex, callsign) {
+            const cs = String(callsign || '').replace(/[^0-9A-Za-z-]/g, '').slice(0, 8).toUpperCase();
+            return `${String(hex || '').replace(/[^0-9A-Za-z]/g, '').slice(0, 6).toLowerCase()}-${cs || 'NOCS'}`;
+        }
+
+        async function waveCall(action, data) {
+            const response = await fetchWithTimeout(WAVE_API, 10000, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action, key: waveKey, device: waveDevice, ...data })
+            });
+            const body = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                const error = new Error(body.error || `wave ${action} failed`);
+                error.status = response.status;
+                error.body = body;
+                throw error;
+            }
+            return body;
+        }
+
+        // Waves this phone sent in the last hour: [{ flight, hex, callsign, t, emoji, nearby }].
+        function sentWaves() {
+            try {
+                const list = JSON.parse(localStorage.getItem(WAVE_SENT_KEY)) || [];
+                return list.filter(w => Date.now() - w.t < WAVE_REPLY_WINDOW_MS);
+            } catch { return []; }
+        }
+        function saveSentWaves(list) {
+            try { localStorage.setItem(WAVE_SENT_KEY, JSON.stringify(list.slice(-20))); } catch { }
+        }
+        const lastWaveAt = flight => sentWaves().filter(w => w.flight === flight).pop() || null;
+
+        // Planes this phone can wave at: airborne, and not owners who asked not
+        // to be tracked, nor military.
+        const waveable = plane => Boolean(waveKey) && !plane.on_ground && !plane.limited &&
+            plane.group !== 'military';
+
+        let waveTimer = null;
+        function renderWaveRow(plane) {
+            const row = document.getElementById('wave-row');
+            clearInterval(waveTimer);
+            waveTimer = null;
+            if (!uiMode || !plane || !waveable(plane)) { row.hidden = true; return; }
+            row.hidden = false;
+            const flight = waveFlightId(plane.icao24, plane.callsign);
+            const draw = () => {
+                const last = lastWaveAt(flight);
+                const left = last ? WAVE_SEND_GAP_MS - (Date.now() - last.t) : 0;
+                const waiting = left > 0;
+                document.getElementById('wave-title').textContent =
+                    last ? `You waved ${last.emoji}` : 'Send a message';
+                const mm = Math.floor(left / 60000), ss = Math.floor(left / 1000) % 60;
+                document.getElementById('wave-sub').textContent = waiting
+                    ? `again in ${mm}:${String(ss).padStart(2, '0')}`
+                    : last ? 'send another' : 'only people on board see it';
+                document.querySelectorAll('#wave-emojis button').forEach(b => {
+                    b.classList.toggle('sent', Boolean(waiting && last && b.dataset.emoji === last.emoji));
+                    b.disabled = waiting;
+                });
+                const note = document.getElementById('wave-note');
+                if (last) {
+                    note.hidden = false;
+                    note.textContent = 'A wave back in the next hour shows up here.' +
+                        (last.nearby > 0 ? ` ${last.nearby} ${last.nearby === 1 ? 'other' : 'others'} near you waved too.` : '');
+                } else {
+                    note.hidden = true;
+                }
+                if (!waiting && waveTimer) { clearInterval(waveTimer); waveTimer = null; }
+            };
+            draw();
+            if (lastWaveAt(flight)) waveTimer = setInterval(draw, 1000);
+            row.dataset.flight = flight;
+            row.dataset.icao = plane.icao24;
+        }
+
+        async function sendWave(emoji) {
+            const row = document.getElementById('wave-row');
+            const plane = planes.find(p => p.icao24 === row.dataset.icao) || selectedPlane;
+            if (!plane || !userLocation) return;
+            document.querySelectorAll('#wave-emojis button').forEach(b => { b.disabled = true; });
+            try {
+                // Rounded to the feed's ~5 km grid before it leaves the phone.
+                const res = await waveCall('send', {
+                    hex: plane.icao24, callsign: plane.callsign, emoji,
+                    lat: Number(snapToGrid(userLocation.lat)), lon: Number(snapToGrid(userLocation.lon))
+                });
+                const list = sentWaves();
+                list.push({ flight: res.flight, hex: plane.icao24, callsign: plane.callsign,
+                    t: res.t, emoji, nearby: res.nearby });
+                saveSentWaves(list);
+                track('wave-sent', { emoji });
+                startReplyPolling();
+            } catch (error) {
+                if (error.status === 429) {
+                    // Sent from another tab or a lost answer: fall in with the server's clock.
+                    const list = sentWaves();
+                    list.push({ flight: waveFlightId(plane.icao24, plane.callsign), hex: plane.icao24,
+                        callsign: plane.callsign, emoji,
+                        t: Date.now() - WAVE_SEND_GAP_MS + (error.body?.retryAfterS ?? 60) * 1000, nearby: 0 });
+                    saveSentWaves(list);
+                } else {
+                    document.getElementById('wave-sub').textContent = error.status === 403
+                        ? 'this wave link no longer works' : "couldn't send, try again";
+                    console.log('wave send failed:', error);
+                }
+            }
+            if (selectedPlane?.icao24 === plane.icao24) renderWaveRow(plane);
+        }
+
+        document.querySelectorAll('#wave-emojis button').forEach(b =>
+            b.addEventListener('click', () => sendWave(b.dataset.emoji)));
+
+        // Replies to this phone's waves.
+        let replyTimer = null;
+        const seenReplies = new Set();
+        function startReplyPolling() {
+            if (!waveKey || replyTimer) return;
+            const tick = async () => {
+                const mine = sentWaves();
+                if (!mine.length) { clearInterval(replyTimer); replyTimer = null; return; }
+                try {
+                    const { replies } = await waveCall('replies', {
+                        waves: mine.map(w => ({ flight: w.flight, t: w.t }))
+                    });
+                    for (const r of replies) {
+                        const id = `${r.flight}/${r.t}`;
+                        if (seenReplies.has(id)) continue;
+                        seenReplies.add(id);
+                        const wave = mine.find(w => w.flight === r.flight);
+                        showWaveToast(r, wave);
+                    }
+                } catch (error) {
+                    console.log('wave replies failed:', error);
+                }
+            };
+            tick();
+            replyTimer = setInterval(tick, WAVE_REPLY_POLL_MS);
+        }
+
+        let waveToastTimer = null;
+        function showWaveToast(reply, wave) {
+            const toast = document.getElementById('wave-toast');
+            const cs = wave?.callsign && wave.callsign !== 'N/A' ? wave.callsign.trim() : 'the plane';
+            const mins = wave ? Math.max(1, Math.round((reply.t - wave.t) / 60000)) : null;
+            document.getElementById('wave-toast-emoji').textContent = reply.emoji;
+            document.getElementById('wave-toast-title').textContent = `Someone on ${cs} waved back`;
+            document.getElementById('wave-toast-sub').textContent =
+                mins ? `The plane you waved at ${mins} min ago` : 'A plane you waved at';
+            toast.dataset.icao = wave?.hex || '';
+            toast.hidden = false;
+            clearTimeout(waveToastTimer);
+            waveToastTimer = setTimeout(() => { toast.hidden = true; }, 12000);
+            track('wave-reply-seen');
+        }
+        document.getElementById('wave-toast').addEventListener('click', () => {
+            const toast = document.getElementById('wave-toast');
+            toast.hidden = true;
+            const plane = planes.find(p => p.icao24 === toast.dataset.icao);
+            if (plane) showPlaneInfo(plane);
+        });
+
+        // ----- In the air -----
+        const ob = {
+            watch: null,
+            fix: null,         // { lat, lon, altM, speedMs, heading, accuracy, t }
+            prevFix: null,
+            fake: null,        // localhost only: a pretend fix for development
+            state: 'finding',
+            candidates: [],
+            plane: null,       // the matched feed plane, in the app's own shape
+            flight: null,
+            matchedAt: null,
+            route: null,
+            below: null,
+            feed: null,        // { waves, mine, wavers }
+            lastOnlineAt: null,
+            showSummary: null,
+            matchTimer: null,
+            feedTimer: null,
+            replying: false,
+            replyNote: ''
+        };
+
+        function startOnboard() {
+            track('wave-onboard-opened');
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('onboard').hidden = false;
+            renderOnboard();
+            // localhost only, never the live site: ?fakefix=lat,lon,altM,speedMs for a
+            // fixed spot, or ?fakefix=follow:<hex>,lat,lon to ride along with a real
+            // plane in the feed (starting the search near lat,lon).
+            const fake = new URLSearchParams(location.search).get('fakefix');
+            if (fake && ['localhost', '127.0.0.1'].includes(location.hostname)) {
+                if (fake.startsWith('follow:')) {
+                    const [hex, lat, lon] = fake.slice(7).split(',');
+                    let at = { lat: Number(lat), lon: Number(lon) };
+                    const tick = async () => {
+                        const res = await fetch(`${API_BASE}?lat=${snapToGrid(at.lat)}&lon=${snapToGrid(at.lon)}&radius=50`);
+                        const ac = ((await res.json()).ac || []).find(a => a.hex === hex);
+                        if (!ac) return;
+                        at = { lat: ac.lat, lon: ac.lon };
+                        onboardFix({ lat: ac.lat, lon: ac.lon, altM: (ac.alt_geom ?? ac.alt_baro) / FT_PER_M,
+                            speedMs: ac.gs / KT_PER_MS, heading: ac.track ?? null, accuracy: 8, t: Date.now() });
+                    };
+                    tick();
+                    setInterval(tick, 10000);
+                    return;
+                }
+                const [lat, lon, altM, speedMs] = fake.split(',').map(Number);
+                ob.fake = { lat, lon, altM, speedMs, heading: null, accuracy: 5 };
+                const tick = () => onboardFix({ ...ob.fake, t: Date.now() });
+                tick();
+                setInterval(tick, 5000);
+                return;
+            }
+            if (!navigator.geolocation) {
+                ob.state = 'nogps';
+                renderOnboard();
+                return;
+            }
+            ob.watch = navigator.geolocation.watchPosition(
+                pos => {
+                    const c = pos.coords;
+                    onboardFix({ lat: c.latitude, lon: c.longitude, altM: c.altitude,
+                        speedMs: c.speed, heading: c.heading, accuracy: c.accuracy, t: pos.timestamp || Date.now() });
+                },
+                error => {
+                    ob.state = error.code === 1 ? 'denied' : 'finding';
+                    renderOnboard();
+                },
+                { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 }
+            );
+        }
+
+        function onboardFix(fix) {
+            // Speed from two fixes when the phone doesn't report one.
+            if (!(fix.speedMs >= 0) && ob.fix && fix.t > ob.fix.t) {
+                const km = calculateDistance(ob.fix.lat, ob.fix.lon, fix.lat, fix.lon);
+                fix.speedMs = km * 1000 / ((fix.t - ob.fix.t) / 1000);
+            }
+            ob.prevFix = ob.fix;
+            ob.fix = fix;
+            if (fix.accuracy > WAVE_FIX_MAX_ACCURACY_M) {
+                if (!ob.flight) { ob.state = 'finding'; renderOnboard(); }
+                return;
+            }
+            const airborne = (fix.altM != null && fix.altM >= WAVE_AIRBORNE_MIN_ALT_M) ||
+                (fix.speedMs != null && fix.speedMs >= WAVE_AIRBORNE_MIN_SPEED_MS);
+            if (!airborne) {
+                ob.state = 'ground';
+                ob.flight = null;
+                stopOnboardTimers();
+                renderOnboard();
+                return;
+            }
+            if (!ob.matchTimer) {
+                matchPlane();
+                ob.matchTimer = setInterval(matchPlane, WAVE_REMATCH_MS);
+            }
+            if (ob.state === 'finding' || ob.state === 'ground') renderOnboard();
+        }
+
+        function stopOnboardTimers() {
+            clearInterval(ob.matchTimer); ob.matchTimer = null;
+            clearInterval(ob.feedTimer); ob.feedTimer = null;
+        }
+
+        // Which plane in the feed is this phone on?
+        async function matchPlane() {
+            const fix = ob.fix;
+            if (!fix) return;
+            try {
+                const url = `${API_BASE}?lat=${snapToGrid(fix.lat)}&lon=${snapToGrid(fix.lon)}&radius=${AIRPORT_FETCH_RADIUS_NM}`;
+                const response = await fetchWithTimeout(url, 8000);
+                if (!response.ok) throw new Error(`plane feed returned ${response.status}`);
+                const data = await response.json();
+                const ageS = Number(response.headers.get('Age')) || 0;
+                const found = (data.ac || []).filter(ac => ac.lat != null && ac.alt_baro !== 'ground').map(ac => {
+                    // Carry the feed's position forward to now along its track.
+                    const dt = Math.min(60, ageS + (ac.seen_pos || 0) + (Date.now() - fix.t) / 1000);
+                    const ms = (ac.gs || 0) / KT_PER_MS;
+                    const trk = ((ac.track ?? ac.true_heading ?? 0) * Math.PI) / 180;
+                    const lat = ac.lat + (ms * dt * Math.cos(trk)) / 111320;
+                    const lon = ac.lon + (ms * dt * Math.sin(trk)) / (111320 * Math.cos(ac.lat * Math.PI / 180));
+                    const altM = typeof ac.alt_geom === 'number' ? ac.alt_geom / FT_PER_M
+                        : typeof ac.alt_baro === 'number' ? ac.alt_baro / FT_PER_M : null;
+                    return { ac, km: calculateDistance(fix.lat, fix.lon, lat, lon), altM };
+                }).filter(c => c.km <= WAVE_MATCH_KM &&
+                    (fix.altM == null || c.altM == null || Math.abs(c.altM - fix.altM) <= WAVE_MATCH_ALT_M) &&
+                    (fix.heading == null || !(fix.heading >= 0) || c.ac.track == null ||
+                        Math.abs(normDeg(c.ac.track - fix.heading)) <= WAVE_MATCH_TRACK_DEG))
+                  .sort((a, b) => a.km - b.km);
+
+                // Still matching the plane already chosen: just renew the proof.
+                const current = ob.plane && found.find(c => c.ac.hex === ob.plane.icao24);
+                if (current) { await boardPlane(current.ac); return; }
+                ob.plane = null;
+                ob.flight = null;
+                clearInterval(ob.feedTimer); ob.feedTimer = null;
+                if (found.length === 1) {
+                    await boardPlane(found[0].ac);
+                } else if (found.length > 1) {
+                    ob.candidates = found.slice(0, 3);
+                    ob.state = 'pick';
+                    renderOnboard();
+                } else {
+                    ob.state = 'nomatch';
+                    renderOnboard();
+                }
+            } catch (error) {
+                console.log('wave match failed:', error);
+                if (!ob.flight) { ob.state = 'offline'; renderOnboard(); }
+            }
+        }
+
+        function planeFromFeed(ac) {
+            return {
+                icao24: ac.hex,
+                callsign: ac.flight ? ac.flight.trim() : 'N/A',
+                latitude: ac.lat,
+                longitude: ac.lon,
+                true_track: ac.track ?? ac.true_heading ?? null,
+                baro_altitude: typeof ac.alt_baro === 'number' ? ac.alt_baro / FT_PER_M : null,
+                velocity: typeof ac.gs === 'number' ? ac.gs / KT_PER_MS : null,
+                aircraft_type: ac.t || null
+            };
+        }
+
+        async function boardPlane(ac) {
+            const fix = ob.fix;
+            try {
+                const res = await waveCall('board', {
+                    hex: ac.hex, callsign: ac.flight ? ac.flight.trim() : '',
+                    altM: fix.altM, speedMs: fix.speedMs,
+                    lat: Number(snapToGrid(fix.lat)), lon: Number(snapToGrid(fix.lon))
+                });
+                const isNew = ob.flight !== res.flight;
+                ob.plane = planeFromFeed(ac);
+                ob.flight = res.flight;
+                ob.matchedAt = Date.now();
+                ob.below = res.below || ob.below;
+                if (isNew) {
+                    track('wave-boarded');
+                    ob.route = null;
+                    ob.state = 'feed';
+                    const cs = ob.plane.callsign !== 'N/A' ? ob.plane.callsign : null;
+                    fetchBestRoute(ob.plane, cs).then(route => { ob.route = route; renderOnboard(); })
+                        .catch(() => { });
+                    loadFeed();
+                    clearInterval(ob.feedTimer);
+                    ob.feedTimer = setInterval(loadFeed, WAVE_FEED_POLL_MS);
+                }
+                renderOnboard();
+            } catch (error) {
+                console.log('wave board failed:', error);
+                ob.state = error.status === 403 && error.body?.error === 'not airborne' ? 'ground'
+                    : error.status === 403 ? 'badlink' : 'offline';
+                renderOnboard();
+            }
+        }
+
+        const waveSeenKey = flight => `jetlens-wave-seen-${flight}`;
+        function readSeen(flight) {
+            try { return JSON.parse(localStorage.getItem(waveSeenKey(flight))) || {}; } catch { return {}; }
+        }
+        function writeSeen(flight, seen) {
+            try { localStorage.setItem(waveSeenKey(flight), JSON.stringify(seen)); } catch { }
+        }
+
+        async function loadFeed() {
+            if (!ob.flight) return;
+            try {
+                const feed = await waveCall('feed', { flight: ob.flight });
+                const seen = readSeen(ob.flight);
+                const now = Date.now();
+                // Offline for a while (or first time back on this flight since the
+                // phone was last online) with waves waiting: open on the summary.
+                const gap = seen.onlineAt ? now - seen.onlineAt : 0;
+                const unseen = feed.waves.filter(w => w.t > (seen.lastT || 0));
+                if (gap > WAVE_OFFLINE_GAP_MS && unseen.length && ob.showSummary === null) {
+                    ob.showSummary = { waves: unseen, from: seen.onlineAt };
+                }
+                ob.feed = feed;
+                writeSeen(ob.flight, { onlineAt: now, lastT: Math.max(seen.lastT || 0, ...feed.waves.map(w => w.t), 0) });
+                if (ob.state !== 'pick') ob.state = 'feed';
+                renderOnboard();
+            } catch (error) {
+                console.log('wave feed failed:', error);
+                if (error.status === 403) matchPlane();
+            }
+        }
+
+        async function sendReply(emoji) {
+            if (!ob.flight || ob.replying) return;
+            ob.replying = true;
+            renderOnboard();
+            try {
+                const res = await waveCall('reply', { flight: ob.flight, emoji });
+                ob.replyNote = res.reached > 0
+                    ? `Sent ${emoji} to ${res.reached} ${res.reached === 1 ? 'person' : 'people'}`
+                    : 'Sent. Nobody has waved in the last hour yet.';
+                track('wave-reply-sent', { emoji });
+                loadFeed();
+            } catch (error) {
+                ob.replyNote = error.status === 429 ? `Wait ${error.body?.retryAfterS ?? 60} s to wave again`
+                    : error.status === 403 ? 'Checking your plane again first…' : "Couldn't send, try again";
+                if (error.status === 403) matchPlane();
+            }
+            ob.replying = false;
+            renderOnboard();
+        }
+
+        // Group waves by place, newest place first.
+        function groupWaves(waves) {
+            const byPlace = new Map();
+            for (const w of waves) {
+                const g = byPlace.get(w.place) || { place: w.place, count: 0, latest: 0, emojis: {} };
+                g.count++;
+                g.latest = Math.max(g.latest, w.t);
+                g.emojis[w.emoji] = (g.emojis[w.emoji] || 0) + 1;
+                byPlace.set(w.place, g);
+            }
+            return [...byPlace.values()].sort((a, b) => b.latest - a.latest);
+        }
+
+        const escapeHtml = str => String(str).replace(/[&<>"']/g, c =>
+            ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+        const ago = t => {
+            const m = Math.round((Date.now() - t) / 60000);
+            return m < 1 ? 'now' : m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} m`;
+        };
+        const clock = t => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+        function placeItem(g, timeText) {
+            const ranked = Object.entries(g.emojis).sort((a, b) => b[1] - a[1]);
+            const icons = ranked.slice(0, 2).map(([e]) => e).join('');
+            const breakdown = ranked.map(([e, n]) => `${n} ${e}`).join(' · ');
+            const who = g.count === 1 ? `1 person in ${g.place}` : `${g.count} people in ${g.place}`;
+            return `<div class="ob-item ob-glass"><div class="e">${icons}</div><div><b>${escapeHtml(who)}</b><span>${breakdown}</span></div><time>${timeText}</time></div>`;
+        }
+
+        function renderOnboard() {
+            const body = document.getElementById('ob-body');
+            const fix = ob.fix;
+            const gps = fix
+                ? (fix.accuracy > WAVE_FIX_MAX_ACCURACY_M ? `GPS: weak · ±${Math.round(fix.accuracy)} m`
+                    : `GPS: ±${Math.round(fix.accuracy)} m · ${fix.altM == null ? 'no height' : `${Math.round(fix.altM * FT_PER_M).toLocaleString()} ft`}`)
+                : 'GPS: waiting';
+            const center = (title, text, extra = '') =>
+                `<div class="ob-center">${extra}<h3>${title}</h3><p>${text}</p><div class="ob-gps">${gps}</div></div>`;
+
+            if (ob.state === 'denied') {
+                body.innerHTML = center('Location is off',
+                    'JetLens needs your location to find your plane. Allow it for this site in Settings, then reload.');
+                return;
+            }
+            if (ob.state === 'nogps') {
+                body.innerHTML = center('No GPS here', "This browser can't share its location, so it can't find your plane.");
+                return;
+            }
+            if (ob.state === 'badlink') {
+                body.innerHTML = center('This wave link no longer works', 'Ask for a new one.');
+                return;
+            }
+            if (ob.state === 'finding') {
+                body.innerHTML = center('Finding your plane',
+                    "Hold your phone near a window for a moment so it can get a GPS fix. You don't need to enter your flight.",
+                    '<div class="ob-window"></div>');
+                return;
+            }
+            if (ob.state === 'ground') {
+                body.innerHTML = center('Waves reach you in the air',
+                    "Your phone is on the ground, so there's nothing to show yet. Open JetLens again once you're flying and on Wi-Fi.") +
+                    '<button class="ob-btn" type="button" id="ob-camera">Open the camera view</button>';
+                document.getElementById('ob-camera').addEventListener('click', () => {
+                    location.href = location.pathname + location.search.replace(/([?&])fakefix=[^&]*&?/, '$1');
+                });
+                return;
+            }
+            if (ob.state === 'nomatch') {
+                body.innerHTML = center('No plane matches you yet',
+                    "You're flying, but no plane in the live feed is within 5 km of you at your height. Some flights aren't covered, especially over water. Trying again every minute.");
+                return;
+            }
+            if (ob.state === 'offline' && !ob.flight) {
+                body.innerHTML = center("Can't reach JetLens",
+                    "Your GPS shows you're flying, but there's no internet. Waves will wait for you; open this again once the Wi-Fi works.");
+                return;
+            }
+            if (ob.state === 'pick') {
+                const n = ob.candidates.length;
+                body.innerHTML = `<div class="ob-center"><h3>Which plane are you on?</h3>
+                    <p>${n === 2 ? 'Two' : 'Three'} planes are within a few kilometres of you at your height. Pick yours.</p>
+                    ${ob.candidates.map((c, i) => {
+                        const cs = c.ac.flight ? c.ac.flight.trim() : c.ac.r || c.ac.hex;
+                        const desc = [c.ac.desc || c.ac.t, c.ac.track != null ? `heading ${Math.round(c.ac.track)}°` : null]
+                            .filter(Boolean).join(' · ');
+                        return `<button type="button" class="ob-choice ob-glass" data-i="${i}"><b>${escapeHtml(cs)}</b><span>${escapeHtml(desc)}</span><i>›</i></button>`;
+                    }).join('')}</div>`;
+                body.querySelectorAll('.ob-choice').forEach(b => b.addEventListener('click', () => {
+                    const c = ob.candidates[Number(b.dataset.i)];
+                    if (c) boardPlane(c.ac);
+                }));
+                return;
+            }
+
+            // On board.
+            const p = ob.plane;
+            const cs = p && p.callsign !== 'N/A' ? p.callsign : p?.icao24?.toUpperCase();
+            const r = ob.route;
+            const routeText = r?.originCode && r?.destinationCode ? ` · ${r.originCode} → ${r.destinationCode}` : '';
+            const altFt = fix?.altM != null ? `${Math.round(fix.altM * FT_PER_M / 100) * 100}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' ft' : null;
+            const sub = [altFt, ob.below ? `over ${ob.below}` : null].filter(Boolean).join(' ');
+            const matched = ob.matchedAt ? `matched ${ago(ob.matchedAt) === 'now' ? 'just now' : ago(ob.matchedAt) + ' ago'}` : '';
+            const head = `<div class="ob-card ob-glass"><div class="ob-k">You're on</div>
+                <div class="ob-v">${escapeHtml(cs || '')}${escapeHtml(routeText)}</div>
+                <div class="ob-s">${escapeHtml([sub, matched].filter(Boolean).join(' · '))}</div></div>`;
+
+            const waves = ob.feed?.waves || [];
+            if (ob.showSummary) {
+                const sw = ob.showSummary.waves;
+                const groups = groupWaves(sw);
+                const tally = {};
+                sw.forEach(w => { tally[w.emoji] = (tally[w.emoji] || 0) + 1; });
+                const first = Math.min(...sw.map(w => w.t)), last = Math.max(...sw.map(w => w.t));
+                body.innerHTML = head + `<div class="ob-sum ob-glass"><div class="ob-k">While you were offline</div>
+                    <div class="n">${sw.length} ${sw.length === 1 ? 'wave' : 'waves'}</div>
+                    <div class="ob-s">from ${groups.length} ${groups.length === 1 ? 'place' : 'places'}, between ${clock(first)} and ${clock(last)}</div>
+                    <div class="ob-tally">${Object.entries(tally).sort((a, b) => b[1] - a[1]).map(([e, n]) => `<span>${e} ${n}</span>`).join('')}</div></div>
+                    <div class="ob-feed">${groups.slice(0, 3).map(g => placeItem(g, clock(g.latest))).join('')}</div>
+                    <div class="ob-reply"><button class="ob-btn" type="button" id="ob-all">${groups.length > 3 ? `Show all ${groups.length} places` : 'Show all waves'}</button></div>`;
+                document.getElementById('ob-all').addEventListener('click', () => { ob.showSummary = false; renderOnboard(); });
+                return;
+            }
+
+            const groups = groupWaves(waves);
+            const wavers = ob.feed?.wavers ?? 0;
+            const mine = ob.feed?.mine || [];
+            const lastMine = mine.length ? mine.reduce((a, b) => (a.t > b.t ? a : b)) : null;
+            body.innerHTML = head + `<div class="ob-feed">
+                <div class="ob-feed-h ob-k"><span>Waves from below</span><span>${waves.length} so far</span></div>
+                ${groups.length ? groups.map(g => placeItem(g, ago(g.latest))).join('')
+                    : `<div class="ob-empty">${ob.feed ? 'No waves yet. When someone below taps your plane in JetLens, it shows up here.' : 'Loading waves…'}</div>`}
+                </div>
+                <div class="ob-reply">
+                    <div class="wave-head"><b>Wave back</b><small>${wavers > 0 ? `to the ${wavers} who waved in the last hour` : 'to anyone who waves in the hour before'}</small></div>
+                    <div class="wave-emojis" id="ob-emojis">${['👋', '👀', '👂', '❤️'].map(e =>
+                        `<button type="button" data-emoji="${e}" class="${lastMine && Date.now() - lastMine.t < 60000 && lastMine.emoji === e ? 'sent' : ''}"${ob.replying ? ' disabled' : ''}>${e}</button>`).join('')}</div>
+                    ${ob.replyNote ? `<div class="wave-note">${escapeHtml(ob.replyNote)}</div>` : ''}
+                </div>`;
+            body.querySelectorAll('#ob-emojis button').forEach(b =>
+                b.addEventListener('click', () => sendReply(b.dataset.emoji)));
+        }
+
+        document.getElementById('onboard-btn').addEventListener('click', startOnboard);
+
         // --- Airport view ---
         //
         // At an airport, planes on the ground are shown too, so someone at the
@@ -4049,6 +4915,8 @@
                         marker.style.display = 'block';
                         marker.classList.toggle('parked', plane.on_ground && !plane.taxiing);
                         marker.classList.toggle('selected', selectedPlane?.icao24 === plane.icao24);
+                        marker.classList.toggle('waved', Boolean(waveKey) &&
+                            Boolean(lastWaveAt(waveFlightId(plane.icao24, plane.callsign))));
                         visibleMarkers.add(plane.icao24);
                         if (groundView) {
                             placed.push({ marker, x: Math.round(position.x), y: Math.round(position.y),
@@ -4608,10 +5476,10 @@
         // the caller's catch like any other failure.
         const UPSTREAM_TIMEOUT_MS = 4000;
 
-        function fetchWithTimeout(url, timeoutMs = UPSTREAM_TIMEOUT_MS) {
+        function fetchWithTimeout(url, timeoutMs = UPSTREAM_TIMEOUT_MS, options = {}) {
             const controller = new AbortController();
             const timer = setTimeout(() => controller.abort(), timeoutMs);
-            return fetch(url, { signal: controller.signal })
+            return fetch(url, { ...options, signal: controller.signal })
                 .finally(() => clearTimeout(timer));
         }
 
@@ -5078,6 +5946,7 @@
                 : `${altitudeFt.toLocaleString()} ft`;
             setGate('origin', null);
             setGate('destination', null);
+            renderWaveRow(plane);
             
             const speedKnots = plane.velocity ? Math.round(plane.velocity * 1.94384) : 0;
             document.getElementById('speed').textContent = `${speedKnots} knots`;
@@ -5167,6 +6036,8 @@
             infoPanel.classList.remove('active');
             selectedPlane = null;
             clearTrip();
+            clearInterval(waveTimer);
+            waveTimer = null;
         });
 
         // Fold the location/direction bar away and back; remembered on this phone.
