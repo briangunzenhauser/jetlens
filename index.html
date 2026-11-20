@@ -509,14 +509,14 @@
         .wave-toast-text span { font-size: 12px; opacity: 0.85; }
 
         /* ?wave: Start and "I'm on a plane" as one pair -- a shrink-to-fit grid, so
-           both take the wider one's width, set closer to each other (10px) than to
-           the note below (16px + 8px). Hidden with the Start button while loading. */
+           both take the wider one's width, set closer to each other (14px) than to
+           the note below (16px + 12px). Hidden with the Start button while loading. */
         .start-buttons {
             display: grid;
-            gap: 10px;
+            gap: 14px;
         }
         .start-buttons:has(> #start-btn[style*="none"]) { display: none; }
-        .start-buttons:has(> #onboard-btn:not([hidden])) + #permission-note { margin-top: 8px; }
+        .start-buttons:has(> #onboard-btn:not([hidden])) + #permission-note { margin-top: 12px; }
         #onboard-btn {
             padding: 12px 28px;
             border-radius: 999px;
@@ -668,6 +668,8 @@
             justify-self: center;
             cursor: pointer;
         }
+        /* A button under a message is a different step from reading it: set apart. */
+        .ob-center .ob-btn { margin-top: 18px; }
         .ob-sum { border-radius: 18px; padding: 16px; display: grid; gap: 6px; }
         .ob-sum .n { font-family: 'Sora', -apple-system, BlinkMacSystemFont, sans-serif; font-size: 34px; font-weight: 700; line-height: 1; }
 
@@ -1741,9 +1743,9 @@
         </div>
         <p id="copyright">
             Built by <a href="https://briangunzenhauser.com" target="_blank" rel="noopener">Brian Gunzenhauser</a> with agentic AI<br>
-            Flight data from <a href="https://adsb.fi" target="_blank" rel="noopener">adsb.fi</a> and <a href="https://adsb.lol" target="_blank" rel="noopener">adsb.lol</a><br>
-            <!-- No rel="noreferrer" on the AeroDataBox link: its terms forbid suppressing the referrer. -->
-            Routes from <a href="https://aerodatabox.com/" target="_blank" rel="noopener">AeroDataBox</a> and adsb.lol, aircraft info from <a href="https://hexdb.io" target="_blank" rel="noopener">hexdb.io</a>
+            <!-- Each source's terms ask for a visible, linked credit. No rel="noreferrer"
+                 on the AeroDataBox link: its terms forbid suppressing the referrer. -->
+            Data from <a href="https://adsb.fi" target="_blank" rel="noopener">adsb.fi</a>, <a href="https://adsb.lol" target="_blank" rel="noopener">adsb.lol</a>, <a href="https://aerodatabox.com/" target="_blank" rel="noopener">AeroDataBox</a> and <a href="https://hexdb.io" target="_blank" rel="noopener">hexdb.io</a>
         </p>
     </div>
 
