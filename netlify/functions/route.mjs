@@ -100,7 +100,12 @@ function endTimes(end) {
     return {
         scheduled: parseTime(end?.scheduledTime?.utc),
         expected: parseTime(end?.revisedTime?.utc) ?? parseTime(end?.predictedTime?.utc),
-        utcOffsetMin: m ? (m[1] === '-' ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3])) : null
+        utcOffsetMin: m ? (m[1] === '-' ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3])) : null,
+        // Terminal and gate as AeroDataBox has them, when the airport publishes
+        // them; many smaller ones don't. Gates get reassigned, so the card treats
+        // these as the latest known, not certain.
+        terminal: typeof end?.terminal === 'string' && end.terminal.trim() ? end.terminal.trim() : null,
+        gate: typeof end?.gate === 'string' && end.gate.trim() ? end.gate.trim() : null
     };
 }
 

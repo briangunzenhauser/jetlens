@@ -1324,6 +1324,58 @@
             padding: 12px 12px 12px 16px;
             border-radius: 18px;
         }
+        /* Airport view. Parked planes shrink to their icon so a row of gates stays
+           readable; tapping one, or picking it on the card, gives it its label. */
+        #leader-lines {
+            position: fixed;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1;
+        }
+        .plane-marker.parked:not(.selected) .plane-marker-inner {
+            font-size: 0;
+            gap: 0;
+            padding: 5px;
+            opacity: 0.7;
+        }
+        #airport-hint {
+            position: fixed;
+            left: 16px;
+            right: 16px;
+            top: 74px;
+            z-index: 205;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 12px 12px 16px;
+            border-radius: 18px;
+        }
+        #airport-hint[hidden] { display: none; }
+        #airport-hint-align,
+        #airport-hint-close {
+            height: 30px;
+            border: 0;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.22);
+            color: #fff;
+            font-size: 13px;
+            font-weight: 600;
+            font-family: inherit;
+            line-height: 1;
+        }
+        #airport-hint-align { padding: 0 14px; background: #fff; color: #0B2C4D; text-shadow: none; }
+        #airport-hint-close { width: 30px; font-size: 18px; }
+        .ui-gate { display: block; font-size: 12px; opacity: 0.85; }
+        .ui-gate[hidden] { display: none; }
+        html.airport-view .ui-gate { font-size: 15px; font-weight: 700; opacity: 1; }
+        #filter-list .filter-row .filter-sub {
+            display: block;
+            font-size: 11px;
+            font-weight: 500;
+            opacity: 0.7;
+        }
         #align-banner[hidden],
         #align-sheet[hidden],
         #align-toast[hidden],
@@ -1451,6 +1503,8 @@
     </div>
 
     <video id="video" autoplay playsinline></video>
+    <!-- Airport view: short lines from a lifted pill down to its plane. -->
+    <svg id="leader-lines" aria-hidden="true"></svg>
     <div id="overlay"></div>
     <div class="crosshair"></div>
 
@@ -1501,6 +1555,16 @@
             <button id="align-confirm" type="button" class="primary">Align</button>
         </div>
     </div>
+    <!-- Airport view: offered once when it turns on, because at a few hundred
+         metres the compass alone can put a pill on the next plane over. -->
+    <div id="airport-hint" class="align-glass" role="status" hidden>
+        <div class="align-banner-text">
+            <strong id="airport-hint-title">At the airport</strong>
+            <span>Line up the pills: tap one plane you can see and are sure of.</span>
+        </div>
+        <button id="airport-hint-align" type="button">Line up</button>
+        <button id="airport-hint-close" type="button" aria-label="Dismiss">×</button>
+    </div>
     <div id="align-toast" class="align-glass" role="status" hidden>
         <span id="align-toast-text"></span>
         <button id="align-undo" type="button">Undo</button>
@@ -1547,6 +1611,7 @@
                 <span class="ui-code" id="origin-code">-</span>
                 <small class="ui-city" id="origin-city"></small>
                 <small class="ui-time" id="origin-time"></small>
+                <small class="ui-gate" id="origin-gate" hidden></small>
             </span>
         </div>
         <div class="info-row" id="destination-row">
@@ -1557,6 +1622,7 @@
                 <span class="ui-code" id="destination-code">-</span>
                 <small class="ui-city" id="destination-city"></small>
                 <small class="ui-time" id="destination-time"></small>
+                <small class="ui-gate" id="destination-gate" hidden></small>
             </span>
         </div>
         <!-- ?ui: how far along the flight is, with travel time and time left. -->
@@ -1624,6 +1690,13 @@
         // Request radius in nautical miles. MAX_DISTANCE below filters to 80km (~43nm)
         // for display, so this only needs enough margin to cover it.
         const FETCH_RADIUS_NM = 50;
+
+        // Airport view polls a smaller circle, faster: see SMALL_RADIUS_NM in
+        // netlify/functions/planes.mjs, which keys its shorter cache on this radius.
+        // 15 nm still covers final approach from about 25 km out, after the grid
+        // snapping's few km; cruising planes farther out drop off while it's on.
+        const AIRPORT_FETCH_RADIUS_NM = 15;
+        const AIRPORT_POLL_INTERVAL_MS = 4000;
 
         // Must match GRID_DEG in netlify/functions/planes.mjs. Snapping here rather than
         // only in the function is what makes the edge cache work: it keys on the full
@@ -2552,6 +2625,7 @@
                 rows.push({ group, input, row });
             }
             sync();
+            buildGroundRow(list);
         }
 
         function buildClassicFilterList(list, saveGroups) {
@@ -2803,6 +2877,7 @@
                 loadingText.textContent = 'Getting your location...';
                 userLocation = await getUserLocation();
                 track('location-granted');
+                loadAirports();
                 updateStatus();
                 watchLocation();
 
@@ -2909,6 +2984,7 @@
                     if (applied) {
                         userLocation = fix;
                         updateStatus();
+                        updateAirport();
                     }
                 },
                 error => logEvent('fix-error', { code: error.code, message: error.message }),
@@ -3081,6 +3157,7 @@
         const MAX_RETRY_AFTER_MS = 300000;
 
         let pollDelay = POLL_INTERVAL_MS;
+        const healthyPollDelay = () => groundViewOn() ? AIRPORT_POLL_INTERVAL_MS : POLL_INTERVAL_MS;
         // Set by fetchPlanes when the upstream asked for a specific wait; consumed and
         // cleared by the next pollLoop tick.
         let upstreamRetryHint = null;
@@ -3104,7 +3181,8 @@
 
             try {
                 const { lat, lon } = userLocation;
-                const url = `${API_BASE}?lat=${snapToGrid(lat)}&lon=${snapToGrid(lon)}&radius=${FETCH_RADIUS_NM}`;
+                const radius = groundViewOn() ? AIRPORT_FETCH_RADIUS_NM : FETCH_RADIUS_NM;
+                const url = `${API_BASE}?lat=${snapToGrid(lat)}&lon=${snapToGrid(lon)}&radius=${radius}`;
 
                 const response = await fetch(url);
                 // An edge-cached answer can be several seconds old on arrival. Dating
@@ -3159,6 +3237,10 @@
                             true_track: heading,
                             vertical_rate: rate === null ? null : rate / FTMIN_PER_MS,
                             on_ground: onGround,
+                            // On the ground and rolling, as opposed to parked. Only
+                            // airport view shows ground planes; parked ones get just
+                            // their icon. Pushback runs about 2-3 kt.
+                            taxiing: onGround && typeof ac.gs === 'number' && ac.gs >= TAXI_MIN_GS_KT,
                             // When this fix was received, so markers can be dead-reckoned
                             // forward between polls instead of freezing. See extrapolatePlane.
                             fetchedAt: Date.now() - ageMs,
@@ -3180,12 +3262,12 @@
                         };
                     }).filter(plane =>
                         // ?ui drops ground vehicles, towers, gliders and the like.
+                        // Planes on the ground are kept for airport view, which
+                        // updateMarkers decides on each pass. Every group is kept
+                        // too, so the Show tab has them all to choose from.
                         plane.group !== null &&
                         plane.latitude != null &&
-                        plane.longitude != null &&
-                        // Every group is kept here so the Show tab has them all to
-                        // choose from; it narrows them in updateMarkers.
-                        !plane.on_ground
+                        plane.longitude != null
                     );
 
                     logEvent('poll', {
@@ -3195,7 +3277,10 @@
                         // it sends one: the truest measure of how stale positions are.
                         feedNow: typeof data.now === 'number' ? data.now : null,
                         raw: data.ac.length,
-                        kept: planes.length
+                        kept: planes.filter(p => !p.on_ground).length,
+                        ground: planes.filter(p => p.on_ground).length,
+                        airport: nearAirport?.code ?? null,
+                        groundView: groundViewOn()
                     });
 
                     // The count itself is written by updateMarkers, so it matches the
@@ -3205,7 +3290,7 @@
                     if (!trackedFirstFetch) {
                         trackedFirstFetch = true;
                         track('planes-loaded', {
-                            count: planes.length,
+                            count: planes.filter(p => !p.on_ground).length,
                             // Without a compass bearing the overlay can't aim, so the
                             // AR view is effectively broken even though nothing errors.
                             // This is the device-capability signal that matters most.
@@ -3244,7 +3329,7 @@
             const ok = await fetchPlanes();
 
             if (ok) {
-                pollDelay = POLL_INTERVAL_MS;
+                pollDelay = healthyPollDelay();
             } else {
                 pollDelay = upstreamRetryHint ?? Math.min(pollDelay * 2, MAX_POLL_BACKOFF_MS);
                 upstreamRetryHint = null;
@@ -3282,7 +3367,7 @@
                 }
             } else if (pollPaused) {
                 pollPaused = false;
-                if (pollDelay === POLL_INTERVAL_MS) pollLoop();
+                if (pollDelay <= POLL_INTERVAL_MS) pollLoop();
                 else pollTimer = setTimeout(pollLoop, pollDelay);
             }
         });
@@ -3318,6 +3403,215 @@
         }
 
         // Calculate elevation angle to plane
+        // --- Airport view ---
+        //
+        // At an airport, planes on the ground are shown too, so someone at the
+        // window can tell which plane is which as it lands and taxis. It turns on by
+        // itself within a few km of an airport (see AIRPORT_RADIUS_KM), and the Show
+        // list has a switch to force it on or off for this visit. While it's on:
+        //   - planes on the ground within GROUND_MAX_KM get pills; parked ones shrink
+        //     to their icon and taxiing ones keep the full pill,
+        //   - a landing plane keeps its pill through touchdown, since it's no longer
+        //     dropped the moment it reports being on the ground,
+        //   - ground planes sit at the field's elevation, seen from the viewer's
+        //     height (a terminal window is usually 5-20 m up),
+        //   - the feed is polled every 4s for a 15 nm circle instead of every 10s
+        //     for 50 nm,
+        //   - overlapping pills are lifted apart with a line down to each plane,
+        //   - the card shows terminal and gate larger, and the tap-to-align button
+        //     is offered, because at a few hundred metres the compass's usual 10° of
+        //     error is the width of a gate.
+        // Coverage is the limit nothing here fixes: buildings block ground signals,
+        // so some airports send little ground traffic, and some planes switch their
+        // transponder off at the gate.
+        const AIRPORT_RADIUS_KM = { l: 5, m: 3.5, s: 2.5 };
+        // How far to look for the field's elevation when the switch is forced on.
+        const AIRPORT_ELEVATION_SEARCH_KM = 15;
+        const GROUND_MAX_KM = 8;
+        const AIRPORT_MIN_ELEVATION = 0;
+        const TAXI_MIN_GS_KT = 3;
+        // A phone's GPS height is often 10-30 m out indoors. Readings more than this
+        // far from the field's own height are taken as wrong, and the viewer is put
+        // at a typical terminal window instead.
+        const VIEWER_ABOVE_FIELD_MIN_M = -20;
+        const VIEWER_ABOVE_FIELD_MAX_M = 80;
+        const VIEWER_DEFAULT_ABOVE_FIELD_M = 10;
+        // Pills closer than this are lifted apart; lifted no more than the cap.
+        const PILL_GAP_PX = 4;
+        const PILL_MAX_LIFT_PX = 160;
+
+        let airports = null;
+        // The airport the viewer is at (auto-on), and the nearest one in reach for
+        // its elevation (used whenever airport view is on).
+        let nearAirport = null;
+        let fieldAirport = null;
+        // null: automatic. true or false: the viewer's choice, for this visit only,
+        // since the next visit may well be somewhere else.
+        let groundOverride = null;
+        let airportHintShown = false;
+        let lastGroundView = false;
+
+        function groundViewOn() {
+            return groundOverride ?? Boolean(nearAirport);
+        }
+
+        async function loadAirports() {
+            try {
+                const response = await fetchWithTimeout('/airports.json', 10000);
+                if (!response.ok) throw new Error(`airports.json returned ${response.status}`);
+                airports = (await response.json()).map(([code, lat, lon, elevM, size]) =>
+                    ({ code, lat, lon, elevM, size }));
+                updateAirport();
+            } catch (error) {
+                // Without the list there's no auto-on; the switch still works, with
+                // the viewer's own height standing in for the field's.
+                console.log('airport list failed to load:', error);
+            }
+        }
+
+        function updateAirport() {
+            if (!airports || !userLocation) return;
+            let near = null, nearD = Infinity, field = null, fieldD = Infinity;
+            // A degree of latitude is ~111 km, so a cheap box test skips almost all.
+            for (const a of airports) {
+                if (Math.abs(a.lat - userLocation.lat) > 0.2 ||
+                    Math.abs(a.lon - userLocation.lon) > 0.3) continue;
+                const d = calculateDistance(userLocation.lat, userLocation.lon, a.lat, a.lon);
+                if (d < AIRPORT_RADIUS_KM[a.size] && d < nearD) { near = a; nearD = d; }
+                if (a.elevM != null && d < AIRPORT_ELEVATION_SEARCH_KM && d < fieldD) { field = a; fieldD = d; }
+            }
+            if (near?.code !== nearAirport?.code) {
+                logEvent('airport', { code: near?.code ?? null, distKm: near ? round(nearD) : null });
+                if (near) track('airport-view', { airport: near.code });
+            }
+            nearAirport = near;
+            fieldAirport = near?.elevM != null ? near : field;
+            groundViewChanged();
+        }
+
+        // Called whenever airport view may have turned on or off.
+        function groundViewChanged() {
+            const on = groundViewOn();
+            syncGroundRow();
+            if (on && !lastGroundView) {
+                // Faster polling starts now rather than after the current 10s wait.
+                if (pollTimer) {
+                    clearTimeout(pollTimer);
+                    pollTimer = setTimeout(pollLoop, 0);
+                }
+            }
+            if (!on) document.getElementById('airport-hint').hidden = true;
+            lastGroundView = on;
+        }
+
+        // Height of the field above sea level, metres.
+        function groundElevationM() {
+            if (fieldAirport) return fieldAirport.elevM;
+            return (userLocation?.altitude ?? VIEWER_DEFAULT_ABOVE_FIELD_M) - VIEWER_DEFAULT_ABOVE_FIELD_M;
+        }
+
+        // The viewer's height above sea level, metres. Outside airport view this is
+        // just the phone's GPS height. In airport view the gap between viewer and
+        // ground decides whether a plane 300 m away shows above or below another,
+        // so a reading that can't be right is replaced with a typical window height.
+        function viewerAltitudeM() {
+            const gps = userLocation?.altitude;
+            if (!groundViewOn() || !fieldAirport) return gps ?? 0;
+            const above = gps == null ? null : gps - fieldAirport.elevM;
+            if (above == null || above < VIEWER_ABOVE_FIELD_MIN_M || above > VIEWER_ABOVE_FIELD_MAX_M) {
+                return fieldAirport.elevM + VIEWER_DEFAULT_ABOVE_FIELD_M;
+            }
+            return gps;
+        }
+
+        // Shown once a visit, the first time airport view has a ground plane in view.
+        function offerAirportAlign() {
+            if (airportHintShown || compassHeading === null) return;
+            airportHintShown = true;
+            initAlign();
+            document.getElementById('airport-hint-title').textContent =
+                nearAirport ? `At ${nearAirport.code}` : 'Planes on the ground';
+            document.getElementById('airport-hint').hidden = false;
+        }
+
+        document.getElementById('airport-hint-align').addEventListener('click', startAlign);
+        document.getElementById('airport-hint-close').addEventListener('click', () => {
+            document.getElementById('airport-hint').hidden = true;
+        });
+
+        // The Show list's switch. Its small line says what automatic would do.
+        let groundRow = null;
+        function buildGroundRow(list) {
+            const head = document.createElement('div');
+            head.className = 'filter-head';
+            const title = document.createElement('span');
+            title.textContent = 'At the airport';
+            head.appendChild(title);
+            const row = document.createElement('label');
+            row.className = 'filter-row';
+            const input = document.createElement('input');
+            input.type = 'checkbox';
+            const name = document.createElement('span');
+            name.className = 'filter-name';
+            name.textContent = 'Planes on the ground';
+            const sub = document.createElement('small');
+            sub.className = 'filter-sub';
+            name.appendChild(sub);
+            input.addEventListener('change', () => {
+                // Matching what automatic would pick hands control back to it.
+                groundOverride = input.checked === Boolean(nearAirport) ? null : input.checked;
+                track('ground-view', { on: input.checked, airport: nearAirport?.code ?? null });
+                groundViewChanged();
+            });
+            row.append(kindIcon('airliner', 'airline'), name, input);
+            list.append(head, row);
+            groundRow = { row, input, sub };
+            syncGroundRow();
+        }
+
+        function syncGroundRow() {
+            if (!groundRow) return;
+            const on = groundViewOn();
+            groundRow.input.checked = on;
+            groundRow.row.classList.toggle('off', !on);
+            groundRow.sub.textContent = groundOverride !== null
+                ? (on ? 'On for this visit' : 'Off for this visit')
+                : nearAirport ? `On: you're at ${nearAirport.code}` : 'Turns on at airports';
+        }
+
+        // Lift overlapping pills apart, nearest plane first so it stays put, and
+        // draw a line from each lifted pill down to where its plane is. Parked
+        // planes are just icons and stay where they are.
+        function spreadPills(placed) {
+            const svg = document.getElementById('leader-lines');
+            if (!placed.length) {
+                if (svg.firstChild) svg.innerHTML = '';
+                return;
+            }
+            const boxes = [];
+            const lines = [];
+            placed.filter(p => !p.parked).sort((a, b) => a.distance - b.distance).forEach(p => {
+                const w = p.marker.offsetWidth, h = p.marker.offsetHeight;
+                let y = p.y;
+                for (let tries = 0; tries < 8; tries++) {
+                    const hit = boxes.find(b => Math.abs(b.x - p.x) < (b.w + w) / 2 + PILL_GAP_PX &&
+                                                Math.abs(b.y - y) < (b.h + h) / 2 + PILL_GAP_PX);
+                    if (!hit) break;
+                    y = hit.y - (hit.h + h) / 2 - PILL_GAP_PX;
+                }
+                if (p.y - y > PILL_MAX_LIFT_PX) y = p.y - PILL_MAX_LIFT_PX;
+                boxes.push({ x: p.x, y, w, h });
+                if (y !== p.y) {
+                    p.marker.style.top = `${Math.round(y)}px`;
+                    lines.push(`<line x1="${p.x}" y1="${Math.round(y + h / 2)}" x2="${p.x}" y2="${p.y}"/>` +
+                               `<circle cx="${p.x}" cy="${p.y}" r="3"/>`);
+                }
+            });
+            svg.innerHTML = lines.length
+                ? `<g stroke="rgba(255,255,255,0.85)" stroke-width="1.5" fill="#fff">${lines.join('')}</g>`
+                : '';
+        }
+
         // Angle above the viewer's horizon, degrees. altitude is the plane's height
         // above sea level in metres, distance in km.
         //
@@ -3330,7 +3624,7 @@
         const REFRACTED_EARTH_RADIUS_M = 6371000 * 7 / 6;
         function calculateElevation(distance, altitude) {
             const distanceM = distance * 1000;
-            const viewerM = userLocation?.altitude ?? 0;
+            const viewerM = viewerAltitudeM();
             const drop = distanceM * distanceM / (2 * REFRACTED_EARTH_RADIUS_M);
             return Math.atan2(altitude - viewerM - drop, distanceM) * 180 / Math.PI;
         }
@@ -3637,6 +3931,7 @@
         // sailing off on a stale velocity -- but with room for the poll interval plus
         // an edge-cached answer's age, or markers would pause just before each update.
         const MAX_EXTRAPOLATION_S = 30;
+        const MAX_GROUND_EXTRAPOLATION_S = 5;
         const EARTH_RADIUS_M = 6371000;
 
         // Last known position advanced forward to `now` along the plane's ground track.
@@ -3644,10 +3939,15 @@
         // turns and altitude changes corrected at the next poll.
         function extrapolatePlane(plane, now) {
             let dt = (now - plane.fetchedAt) / 1000; // seconds since the fix
-            if (!plane.velocity || plane.true_track == null || !(dt > 0)) {
-                return { lat: plane.latitude, lon: plane.longitude, alt: plane.geo_altitude || 0 };
+            // On the ground the plane sits on the field, whatever its altitude reads.
+            const baseAlt = plane.on_ground ? groundElevationM() : plane.geo_altitude || 0;
+            // A parked plane isn't going anywhere; a taxiing one turns at every
+            // corner, so it is only carried forward a few seconds.
+            const moving = plane.on_ground ? plane.taxiing : true;
+            if (!moving || !plane.velocity || plane.true_track == null || !(dt > 0)) {
+                return { lat: plane.latitude, lon: plane.longitude, alt: baseAlt };
             }
-            dt = Math.min(dt, MAX_EXTRAPOLATION_S);
+            dt = Math.min(dt, plane.on_ground ? MAX_GROUND_EXTRAPOLATION_S : MAX_EXTRAPOLATION_S);
 
             const distM = plane.velocity * dt;
             const track = plane.true_track * Math.PI / 180;
@@ -3655,7 +3955,8 @@
 
             const dLat = (distM * Math.cos(track) / EARTH_RADIUS_M) * 180 / Math.PI;
             const dLon = (distM * Math.sin(track) / (EARTH_RADIUS_M * Math.cos(latRad))) * 180 / Math.PI;
-            const alt = (plane.geo_altitude || 0) + (plane.vertical_rate ? plane.vertical_rate * dt : 0);
+            const alt = plane.on_ground ? baseAlt
+                : baseAlt + (plane.vertical_rate ? plane.vertical_rate * dt : 0);
 
             return { lat: plane.latitude + dLat, lon: plane.longitude + dLon, alt };
         }
@@ -3676,7 +3977,14 @@
             const candidates = [];
             const groupCounts = {};
 
+            const groundView = groundViewOn();
+            document.documentElement.classList.toggle('airport-view', groundView);
+            // Airport view: pills placed this pass, for spreading out afterwards.
+            const placed = [];
+
             planes.forEach(plane => {
+                // Planes on the ground only in airport view, and only this airport's.
+                if (plane.on_ground && !groundView) return;
                 const pos = extrapolatePlane(plane, now);
 
                 const bearing = calculateBearing(
@@ -3699,7 +4007,15 @@
                 const MAX_DISTANCE = 80; // km
                 const MIN_ELEVATION = 5; // degrees above horizon
 
-                if (distance >= MAX_DISTANCE || elevation <= MIN_ELEVATION) return;
+                if (plane.on_ground) {
+                    // Below eye level from a terminal window, so no elevation floor.
+                    if (distance >= GROUND_MAX_KM) return;
+                } else if (distance >= MAX_DISTANCE ||
+                           // At the airport, a plane on final is a degree or two up
+                           // and is exactly what the viewer came for.
+                           elevation <= (groundView ? AIRPORT_MIN_ELEVATION : MIN_ELEVATION)) {
+                    return;
+                }
                 groupCounts[plane.group] = (groupCounts[plane.group] || 0) + 1;
 
                 const inFov = isInFieldOfView(bearing, elevation);
@@ -3731,7 +4047,14 @@
                         marker.style.left = `${Math.round(position.x)}px`;
                         marker.style.top = `${Math.round(position.y)}px`;
                         marker.style.display = 'block';
+                        marker.classList.toggle('parked', plane.on_ground && !plane.taxiing);
+                        marker.classList.toggle('selected', selectedPlane?.icao24 === plane.icao24);
                         visibleMarkers.add(plane.icao24);
+                        if (groundView) {
+                            placed.push({ marker, x: Math.round(position.x), y: Math.round(position.y),
+                                distance, ground: plane.on_ground,
+                                parked: plane.on_ground && !plane.taxiing });
+                        }
                     }
                 }
 
@@ -3748,6 +4071,13 @@
                     markers[icao].style.display = 'none';
                 }
             });
+            spreadPills(placed);
+            // Offered once there's a plane on the ground in view to line up on, and
+            // not over the intro card.
+            if (groundView && !airportHintShown && placed.some(p => p.ground) &&
+                (intro.style.display === 'none' || !intro.classList.contains('visible'))) {
+                offerAirportAlign();
+            }
             
             // Update debug display with visible count
             document.getElementById('debug-visible').textContent = visibleMarkers.size;
@@ -3942,9 +4272,12 @@
         function startAlign() {
             if (compassHeading === null) return;
             hideAlignToast();
+            document.getElementById('airport-hint').hidden = true;
             alignUi.state = 'arming';
             alignUi.icao = null;
-            setBanner('Tap the plane you see', 'The plane itself in the sky, not its pill.');
+            setBanner('Tap the plane you see', groundViewOn()
+                ? 'The plane itself, not its pill.'
+                : 'The plane itself in the sky, not its pill.');
             renderAlign();
         }
 
@@ -4059,14 +4392,17 @@
         // Dim the dot after a big turn: the compass's error changes with direction,
         // so a correction made facing south may not fit facing north.
         function updateAlignStale() {
-            if (!targetMode || alignDeg === 0 || alignUi.facingAtAlign === null) return;
+            if (!alignReady || alignDeg === 0 || alignUi.facingAtAlign === null) return;
             const facing = facingBearing();
             if (facing === null) return;
             document.getElementById('status').classList.toggle('align-stale',
                 Math.abs(normDeg(facing - alignUi.facingAtAlign)) > ALIGN_STALE_TURN_DEG);
         }
 
+        let alignReady = false;
         function initAlign() {
+            if (alignReady) return;
+            alignReady = true;
             const btn = document.getElementById('align-btn');
             btn.hidden = false;
             btn.addEventListener('click', () => alignUi.state === 'off' ? startAlign() : stopAlign());
@@ -4132,7 +4468,10 @@
             
             marker.appendChild(inner);
             
-            marker.addEventListener('click', () => showPlaneInfo(plane));
+            // The latest copy: the one this marker was made from goes stale with
+            // every poll, and a plane that has since landed should open as landed.
+            marker.addEventListener('click', () =>
+                showPlaneInfo(planes.find(p => p.icao24 === plane.icao24) || plane));
             
             return marker;
         }
@@ -4565,6 +4904,19 @@
                 code ? city || '' : name || 'Unavailable';
         }
 
+        // Terminal and gate under an airport, when AeroDataBox has them. Larger in
+        // airport view, where it's what someone at the window wants to know. Gates
+        // get reassigned and the source can lag the airport's own screens, so it
+        // reads as a plain fact only as good as its source; nothing when unknown.
+        function setGate(id, end) {
+            const el = document.getElementById(id + '-gate');
+            const parts = [];
+            if (end?.terminal) parts.push(`Terminal ${end.terminal}`);
+            if (end?.gate) parts.push(`Gate ${end.gate}`);
+            el.textContent = parts.join(' · ');
+            el.hidden = parts.length === 0;
+        }
+
         // The Aircraft value: maker on its own line in the ?ui card, model beneath.
         // The classic card ignores the maker and shows the text as before.
         function setAircraft(plane, text, typeCode) {
@@ -4721,7 +5073,11 @@
             if (uiMode) setCardAirline(plane, null);
             
             const altitudeFt = plane.baro_altitude ? Math.round(plane.baro_altitude * 3.28084) : 0;
-            document.getElementById('altitude').textContent = `${altitudeFt.toLocaleString()} ft`;
+            document.getElementById('altitude').textContent = plane.on_ground
+                ? (plane.taxiing ? 'Taxiing' : 'On the ground')
+                : `${altitudeFt.toLocaleString()} ft`;
+            setGate('origin', null);
+            setGate('destination', null);
             
             const speedKnots = plane.velocity ? Math.round(plane.velocity * 1.94384) : 0;
             document.getElementById('speed').textContent = `${speedKnots} knots`;
@@ -4785,6 +5141,8 @@
                 setLocation('destination', routeInfo.destination, routeInfo.destinationSub,
                     routeInfo.destinationCode, routeInfo.destinationCity);
                 if (routeInfo.originCode) showTrip(routeInfo);
+                setGate('origin', routeInfo.departure);
+                setGate('destination', routeInfo.arrival);
                 // The route's operator can differ from the callsign's (or the feed
                 // had none), so recolour from it.
                 if (uiMode && (routeInfo.marketing?.icao || routeInfo.airlineCode)) {

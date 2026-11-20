@@ -61,6 +61,16 @@ const CDN_CACHE = 'public, durable, s-maxage=8, stale-while-revalidate=10';
 // cell costs one upstream call per 8s however many people are looking at it.
 const CLOUDFLARE_CACHE = 'public, max-age=8, stale-while-revalidate=10';
 
+// Airport view asks for a small circle every 4s instead of the usual 50 nm every
+// 10s: a taxiing plane covers about 75 m in 10s and turns at every corner, so an
+// 8s-old answer puts its pill on the wrong taxiway. Small requests get a 3s
+// cache instead. They are a separate cache entry (the radius is in the key), and
+// few people are at an airport at once, so the shared 1 request/second holds.
+const SMALL_RADIUS_NM = 15;
+const SMALL_CACHE_TTL_MS = 3000;
+const SMALL_CDN_CACHE = 'public, durable, s-maxage=3, stale-while-revalidate=4';
+const SMALL_CLOUDFLARE_CACHE = 'public, max-age=3, stale-while-revalidate=4';
+
 // Query coordinates are snapped to this grid before going upstream, so nearby
 // viewers share a cache entry instead of each cutting their own. It also means
 // adsb.fi never receives a visitor's exact position.
@@ -106,6 +116,7 @@ async function fetchUpstream(name, url) {
 
 // Only fresh upstream answers are edge-cacheable. Errors must not be, and nor
 // must a stale fallback, or the edge would keep serving it after recovery.
+// `cacheable` is false, or 'small' for an airport-view answer, or true.
 const json = (status, body, cacheable = false, extraHeaders = {}) =>
     new Response(JSON.stringify(body), {
         status,
@@ -114,8 +125,9 @@ const json = (status, body, cacheable = false, extraHeaders = {}) =>
             ...(cacheable
                 ? {
                       'Cache-Control': 'public, max-age=0, must-revalidate',
-                      'Netlify-CDN-Cache-Control': CDN_CACHE,
-                      'Cloudflare-CDN-Cache-Control': CLOUDFLARE_CACHE
+                      'Netlify-CDN-Cache-Control': cacheable === 'small' ? SMALL_CDN_CACHE : CDN_CACHE,
+                      'Cloudflare-CDN-Cache-Control':
+                          cacheable === 'small' ? SMALL_CLOUDFLARE_CACHE : CLOUDFLARE_CACHE
                   }
                 : { 'Cache-Control': 'no-store' }),
             ...extraHeaders
@@ -149,10 +161,13 @@ export default async (req) => {
     const gridLat = snap(lat);
     const gridLon = snap(lon);
     const key = `${gridLat.toFixed(2)}/${gridLon.toFixed(2)}/${radius}`;
+    const small = radius <= SMALL_RADIUS_NM;
+    const ttl = small ? SMALL_CACHE_TTL_MS : CACHE_TTL_MS;
+    const cacheable = small ? 'small' : true;
 
     const hit = cache.get(key);
-    if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
-        return json(200, hit.body, true);
+    if (hit && Date.now() - hit.at < ttl) {
+        return json(200, hit.body, cacheable);
     }
 
     // Two viewers of the same patch of sky landing together shouldn't each open
@@ -160,7 +175,7 @@ export default async (req) => {
     const pending = inFlight.get(key);
     if (pending) {
         try {
-            return json(200, await pending, true);
+            return json(200, await pending, cacheable);
         } catch {
             // The shared call failed. Fall through and try again below rather
             // than failing this request on someone else's error.
@@ -215,7 +230,7 @@ export default async (req) => {
     inFlight.set(key, attempt);
 
     try {
-        return json(200, await attempt, true);
+        return json(200, await attempt, cacheable);
     } catch (error) {
         // A stale sky beats no sky: if the upstream just failed but we hold a
         // recent answer for this spot, serve it rather than blanking the map.

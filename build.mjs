@@ -11,7 +11,7 @@
 //
 // Usage: node build.mjs [--watch]
 
-import { readFileSync, writeFileSync, mkdirSync, watch } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, copyFileSync, watch } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import esbuild from 'esbuild';
@@ -73,6 +73,9 @@ async function build() {
 
     mkdirSync(OUT_DIR, { recursive: true });
     writeFileSync(OUT, html);
+    // The airport list for airport view, fetched by the page when it starts. Built
+    // by scripts/airports.mjs; copied as is, since it's already compact JSON.
+    copyFileSync(join(root, 'data', 'airports.json'), join(OUT_DIR, 'airports.json'));
 
     const kb = n => (n / 1024).toFixed(1) + ' kB';
     console.log(`built dist/index.html  ${kb(src.length)} -> ${kb(html.length)} raw ` +
