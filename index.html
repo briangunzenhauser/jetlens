@@ -1758,14 +1758,34 @@
             ['FJI', 'Fiji Airways'],
         ]);
 
-        // Altitude floor, metres. This is deliberately low: under an approach corridor
-        // the most interesting aircraft are the ones on final, and an airliner at 2,500
-        // feet passing overhead is the whole point of the app. Ground clutter is
-        // already handled by the on_ground flag and the carrier allowlist, so this only
-        // needs to catch aircraft still rolling out that never set on_ground.
+        // No altitude floor: anything in the sky is shown. There used to be one (200 m
+        // of barometric altitude, before that 1000 m), and on 2026-11-20 it hid 27
+        // flying aircraft within 50 nm of Newark -- NYPD and news helicopters, Cessnas
+        // in the pattern, UAL957 and JTZ623 on short final. Barometric altitude is
+        // pressure altitude, not height above ground, and on a high-pressure day it
+        // reads hundreds of feet low, even below zero for planes plainly airborne.
         //
-        // It was 1000 -- metres, not feet, so it silently hid everything below 3,281 ft.
-        const MIN_ALTITUDE = 200;
+        // What the floor really caught was aircraft on the ground whose transponders
+        // never report alt_baro 'ground': parked, or taxiing after landing. Those are
+        // told apart by speed, not altitude, so it works at a mile-high airport too
+        // (an RV-12 taxiing at 10 kt near Denver, 5,250 ft).
+        //
+        // Fixed-wing: under 25 kt with no real climb or descent. Nothing with wings
+        // flies that slowly over the ground except into a gale, while a landing plane
+        // stays above it until it has nearly stopped on the runway, so its pill lasts
+        // through touchdown and most of the rollout. Live samples had Cessnas flying
+        // at 34-40 kt into headwinds; 25 leaves room under them.
+        //
+        // Helicopters aren't shown at all (see isHelicopter), so this only has to
+        // handle wings.
+        const PARKED_MAX_GS_KT = 25;
+        const PARKED_MAX_RATE_FPM = 200;
+
+        function looksParked(ac) {
+            if (typeof ac.gs !== 'number') return false; // unknown speed: show it
+            const rate = Math.abs(ac.baro_rate ?? ac.geom_rate ?? 0);
+            return ac.gs < PARKED_MAX_GS_KT && rate < PARKED_MAX_RATE_FPM;
+        }
 
         function isMajorCarrier(callsign) {
             const match = callsign.match(/^([A-Z]{3})[0-9]/);
@@ -1830,14 +1850,12 @@
             { id: 'airline', label: 'Airlines' },
             { id: 'business', label: 'Business jets' },
             { id: 'small', label: 'Small planes' },
-            { id: 'helicopter', label: 'Helicopters' },
             { id: 'military', label: 'Military' },
         ] : [
             { id: 'airline', label: 'Airlines' },
             { id: 'cargo', label: 'Cargo' },
             { id: 'business', label: 'Business jets' },
             { id: 'small', label: 'Small planes' },
-            { id: 'helicopter', label: 'Helicopters' },
             { id: 'military', label: 'Military' },
             { id: 'other', label: 'Other' },
         ];
@@ -1856,6 +1874,17 @@
         // Types that are helicopters even when the feed's category is missing.
         const HELICOPTER_TYPE = /^(H\d\d|H47|H500|R22|R44|R66|B06|B407|B429|B412|AS\d\d|EC\d\d|A1[0-6]9|S76|S92|EN28)$/;
 
+        // Helicopters, military ones included, are left out of the app for now
+        // (2026-11-20). Many never report being on the ground, and a parked one
+        // looks exactly like one hovering in place, so telling them apart needs the
+        // terrain height under them -- not built yet. Until then a helicopter on a
+        // pad would show as flying, so none are shown. Their colours, icon and
+        // labels are still here for when they come back: drop the two calls to this
+        // and restore the Helicopters entries in AIRCRAFT_GROUPS.
+        function isHelicopter(ac) {
+            return ac.category === 'A7' || HELICOPTER_TYPE.test(ac.t || '');
+        }
+
         // Not things you look up and see: surface vehicles and obstacles (category
         // C*), gliders (B1), parachutists (B3), drones (B6), and airport towers that
         // transmit a position.
@@ -1872,7 +1901,7 @@
         // airliner even when its category says small (a CRJ-200 and JSX's ERJ-145s
         // were filed under Small), and leftovers go to Small rather than Other.
         function classifyAircraftUi(ac, callsign) {
-            if (isNotAnAircraft(ac)) return null;
+            if (isNotAnAircraft(ac) || isHelicopter(ac)) return null;
             const prefix = (callsign.match(/^([A-Z]{3})[0-9]/) || [])[1];
             const category = ac.category || null;
             if ((ac.dbFlags & 1) || MILITARY_CALLSIGN.test(callsign)) return 'military';
@@ -1921,6 +1950,7 @@
         // tests matters: a military helicopter is military, a regional jet flying for
         // an airline is an airline even though its category is A2.
         function classifyAircraft(ac, callsign) {
+            if (isHelicopter(ac)) return null;
             const prefix = (callsign.match(/^([A-Z]{3})[0-9]/) || [])[1];
             const category = ac.category || null;
             if ((ac.dbFlags & 1) || MILITARY_CALLSIGN.test(callsign)) return 'military';
@@ -3095,7 +3125,7 @@
                     planes = data.ac.map(ac => {
                         // alt_baro is the string 'ground' for aircraft on the surface,
                         // so it can't be treated as a number unconditionally.
-                        const onGround = ac.alt_baro === 'ground';
+                        const onGround = ac.alt_baro === 'ground' || looksParked(ac);
                         // track is absent on ~20% of records; the heading fields are
                         // the next best thing and are close enough for a bearing.
                         const heading = ac.track ?? ac.true_heading ?? ac.mag_heading ?? null;
@@ -3117,6 +3147,14 @@
                             longitude: ac.lon,
                             latitude: ac.lat,
                             baro_altitude: onGround ? 0 : ac.alt_baro / FT_PER_M,
+                            // Where the pill goes. GPS altitude, because barometric is
+                            // pressure altitude: it drifts hundreds of feet with the
+                            // weather (about 300 ft low on 2026-11-20), and a low plane's
+                            // pill sat that far below it. The card still shows
+                            // barometric, as FlightAware and controllers do. Most
+                            // aircraft send both; older transponders only barometric.
+                            geo_altitude: onGround ? 0
+                                : (typeof ac.alt_geom === 'number' ? ac.alt_geom : ac.alt_baro) / FT_PER_M,
                             velocity: typeof ac.gs === 'number' ? ac.gs / KT_PER_MS : null,
                             true_track: heading,
                             vertical_rate: rate === null ? null : rate / FTMIN_PER_MS,
@@ -3143,12 +3181,11 @@
                     }).filter(plane =>
                         // ?ui drops ground vehicles, towers, gliders and the like.
                         plane.group !== null &&
-                        plane.latitude &&
-                        plane.longitude &&
-                        !plane.on_ground &&
+                        plane.latitude != null &&
+                        plane.longitude != null &&
                         // Every group is kept here so the Show tab has them all to
                         // choose from; it narrows them in updateMarkers.
-                        plane.baro_altitude > MIN_ALTITUDE
+                        !plane.on_ground
                     );
 
                     logEvent('poll', {
@@ -3281,10 +3318,21 @@
         }
 
         // Calculate elevation angle to plane
+        // Angle above the viewer's horizon, degrees. altitude is the plane's height
+        // above sea level in metres, distance in km.
+        //
+        // Measured from the viewer's own height, not sea level: it used to divide the
+        // plane's altitude by the distance as if everyone stood on a beach, which in
+        // Denver (1,600 m) lifted a plane 3,000 m up and 20 km out from 4° to 8.5°.
+        // The phone's GPS altitude is used when it has one. The Earth's curve is
+        // taken off too -- about 0.4 km at 80 km -- with the usual allowance for the
+        // air bending light (an effective radius 7/6 of the real one).
+        const REFRACTED_EARTH_RADIUS_M = 6371000 * 7 / 6;
         function calculateElevation(distance, altitude) {
-            // altitude is in meters, distance in km
             const distanceM = distance * 1000;
-            return Math.atan2(altitude, distanceM) * 180 / Math.PI;
+            const viewerM = userLocation?.altitude ?? 0;
+            const drop = distanceM * distanceM / (2 * REFRACTED_EARTH_RADIUS_M);
+            return Math.atan2(altitude - viewerM - drop, distanceM) * 180 / Math.PI;
         }
 
         // Elevation the camera is pointed at: 0° = horizon, 90° = straight up.
@@ -3597,7 +3645,7 @@
         function extrapolatePlane(plane, now) {
             let dt = (now - plane.fetchedAt) / 1000; // seconds since the fix
             if (!plane.velocity || plane.true_track == null || !(dt > 0)) {
-                return { lat: plane.latitude, lon: plane.longitude, alt: plane.baro_altitude || 0 };
+                return { lat: plane.latitude, lon: plane.longitude, alt: plane.geo_altitude || 0 };
             }
             dt = Math.min(dt, MAX_EXTRAPOLATION_S);
 
@@ -3607,7 +3655,7 @@
 
             const dLat = (distM * Math.cos(track) / EARTH_RADIUS_M) * 180 / Math.PI;
             const dLon = (distM * Math.sin(track) / (EARTH_RADIUS_M * Math.cos(latRad))) * 180 / Math.PI;
-            const alt = (plane.baro_altitude || 0) + (plane.vertical_rate ? plane.vertical_rate * dt : 0);
+            const alt = (plane.geo_altitude || 0) + (plane.vertical_rate ? plane.vertical_rate * dt : 0);
 
             return { lat: plane.latitude + dLat, lon: plane.longitude + dLon, alt };
         }
@@ -4123,8 +4171,14 @@
         // Airports from vrs-standing-data carry `.lat`/`.lon`. Given a plane and one
         // leg (origin -> destination), decide whether the plane is plausibly on it.
         function legMatchesPosition(plane, origin, destination) {
-            if (origin?.lat == null || destination?.lat == null) return false; // can't check
-            if (plane.latitude == null || plane.longitude == null) return false;
+            return legFitKm(plane, origin, destination) != null;
+        }
+
+        // How badly the plane fits one leg, in km -- its distance off the route plus
+        // how far it has run past either end -- or null when it doesn't fit at all.
+        function legFitKm(plane, origin, destination) {
+            if (origin?.lat == null || destination?.lat == null) return null; // can't check
+            if (plane.latitude == null || plane.longitude == null) return null;
 
             const o = geoVector(origin.lat, origin.lon);
             const d = geoVector(destination.lat, destination.lon);
@@ -4140,9 +4194,8 @@
             // is what "on its route" actually means.
             const normal = normalize(cross(o, d));
             const offRoute = dot(normal, p);
-            if (Math.abs(Math.asin(clamp(offRoute))) * EARTH_RADIUS_KM > ROUTE_CORRIDOR_KM) {
-                return false;
-            }
+            const offKm = Math.abs(Math.asin(clamp(offRoute))) * EARTH_RADIUS_KM;
+            if (offKm > ROUTE_CORRIDOR_KM) return null;
 
             // Being near the great circle is not enough: it wraps the whole globe, so
             // a route between two other continents can still pass overhead. Require the
@@ -4159,8 +4212,9 @@
             const segment = Math.acos(clamp(dot(o, d))) * EARTH_RADIUS_KM;
 
             if (!(along > -ROUTE_CORRIDOR_KM && along < segment + ROUTE_CORRIDOR_KM)) {
-                return false;
+                return null;
             }
+            const fit = offKm + Math.max(0, -along, along - segment);
 
             // The corridor has no direction, so the return leg passes too. UAL2289 files
             // ATL-EWR-AUS; on 2026-11-10 it was heading 238° over Lancaster on EWR-AUS,
@@ -4168,32 +4222,43 @@
             // panel said Atlanta -> Newark. Compare the plane's track with the leg's
             // course at the plane's point. Near either airport, departure turns and
             // approach vectors can point anywhere, so skip the check there.
-            if (plane.true_track == null) return true;
+            if (plane.true_track == null) return fit;
             // Straight-line distance to each airport, not distance along the route: a
             // plane well off to the side of an airport can still project onto the
             // route right next to it.
             const fromOrigin = Math.acos(clamp(dot(o, p))) * EARTH_RADIUS_KM;
             const fromDestination = Math.acos(clamp(dot(d, p))) * EARTH_RADIUS_KM;
-            if (Math.min(fromOrigin, fromDestination) < ROUTE_TERMINAL_KM) return true;
+            if (Math.min(fromOrigin, fromDestination) < ROUTE_TERMINAL_KM) return fit;
             const east = normalize(cross([0, 0, 1], projected));
             const north = cross(projected, east);
             const ahead = cross(normal, projected); // direction of travel, origin -> destination
             const course = Math.atan2(dot(ahead, east), dot(ahead, north)) * 180 / Math.PI;
             const diff = Math.abs(((plane.true_track - course) % 360 + 540) % 360 - 180);
-            return diff <= ROUTE_HEADING_TOLERANCE_DEG;
+            return diff <= ROUTE_HEADING_TOLERANCE_DEG ? fit : null;
         }
 
         // A route may be multi-leg (e.g. ORD-LAX-ORD lands as three stops). Return the
         // consecutive pair whose corridor the plane sits in -- the leg it is actually
         // flying -- or null when the plane matches none of them, which means the route
         // on file contradicts where the aircraft is.
+        //
+        // When several legs pass, take the best fit, not the first. The corridor runs
+        // ROUTE_CORRIDOR_KM past each airport, and past the destination the leg's
+        // course still points onward, so a plane that has flown on to the next leg
+        // also passes the one before it. On 2026-11-20 over Lancaster: FDX5047, ~200 km
+        // west of Newark on EWR-MEM, showed Paris -> Newark; LBQ651 on Manassas ->
+        // Reading, ~280 km east of Pittsburgh, showed Cincinnati -> Pittsburgh.
         function currentLeg(plane, stops) {
+            let best = null;
+            let bestFit = Infinity;
             for (let i = 0; i < stops.length - 1; i++) {
-                if (legMatchesPosition(plane, stops[i], stops[i + 1])) {
-                    return [stops[i], stops[i + 1]];
+                const fit = legFitKm(plane, stops[i], stops[i + 1]);
+                if (fit != null && fit < bestFit) {
+                    best = [stops[i], stops[i + 1]];
+                    bestFit = fit;
                 }
             }
-            return null;
+            return best;
         }
 
         // fetch() has no default timeout, and an upstream that accepts the connection
