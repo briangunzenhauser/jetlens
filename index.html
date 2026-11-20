@@ -4229,8 +4229,8 @@
                 ? (fix.accuracy > WAVE_FIX_MAX_ACCURACY_M ? `GPS: weak · ±${Math.round(fix.accuracy)} m`
                     : `GPS: ±${Math.round(fix.accuracy)} m · ${fix.altM == null ? 'no height' : `${Math.round(fix.altM * FT_PER_M).toLocaleString()} ft`}`)
                 : 'GPS: waiting';
-            const center = (title, text, extra = '') =>
-                `<div class="ob-center">${extra}<h3>${title}</h3><p>${text}</p><div class="ob-gps">${gps}</div></div>`;
+            const center = (title, text, extra = '', after = '') =>
+                `<div class="ob-center">${extra}<h3>${title}</h3><p>${text}</p><div class="ob-gps">${gps}</div>${after}</div>`;
 
             if (ob.state === 'denied') {
                 body.innerHTML = center('Location is off',
@@ -4253,8 +4253,8 @@
             }
             if (ob.state === 'ground') {
                 body.innerHTML = center('Waves reach you in the air',
-                    "Your phone is on the ground, so there's nothing to show yet. Open JetLens again once you're flying and on Wi-Fi.") +
-                    '<button class="ob-btn" type="button" id="ob-camera">Open the camera view</button>';
+                    "Your phone is on the ground, so there's nothing to show yet. Open JetLens again once you're flying and on Wi-Fi.",
+                    '', '<button class="ob-btn" type="button" id="ob-camera">Back to start</button>');
                 document.getElementById('ob-camera').addEventListener('click', () => {
                     const params = new URLSearchParams(location.search);
                     params.delete('fakefix');
