@@ -508,8 +508,16 @@
         .wave-toast-text strong { font-size: 14px; }
         .wave-toast-text span { font-size: 12px; opacity: 0.85; }
 
+        /* ?wave: Start and "I'm on a plane" as one pair -- a shrink-to-fit grid, so
+           both take the wider one's width, set closer to each other (10px) than to
+           the note below (16px + 8px). Hidden with the Start button while loading. */
+        .start-buttons {
+            display: grid;
+            gap: 10px;
+        }
+        .start-buttons:has(> #start-btn[style*="none"]) { display: none; }
+        .start-buttons:has(> #onboard-btn:not([hidden])) + #permission-note { margin-top: 8px; }
         #onboard-btn {
-            margin-top: 12px;
             padding: 12px 28px;
             border-radius: 999px;
             border: 1px solid rgba(11, 44, 77, 0.35);
@@ -1723,8 +1731,10 @@
         <div class="start-group">
             <div class="spinner"></div>
             <div id="loading-text">Initializing camera and sensors...</div>
-            <button id="start-btn" style="display: none;">Start JetLens</button>
-            <button id="onboard-btn" type="button" hidden>I'm on a plane</button>
+            <div class="start-buttons">
+                <button id="start-btn" style="display: none;">Start JetLens</button>
+                <button id="onboard-btn" type="button" hidden>I'm on a plane</button>
+            </div>
             <p id="permission-note" style="display: none;">
                 JetLens needs access to your camera and location to work properly.
             </p>
